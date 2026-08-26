@@ -1,0 +1,1040 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <title>🐑 Q.anva 🐑</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dom-to-image-more@3.4.1/dist/dom-to-image-more.min.js"></script>
+  <style>
+    @import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;600;700&display=swap");
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #111318;
+      --panel: #1a1d24;
+      --border: #2a2d36;
+      --accent: #4f8fff;
+      --accent-dim: rgba(79,143,255,0.12);
+      --green: #22c55e;
+      --red: #ef4444;
+      --amber: #f59e0b;
+      --text: #e8eaf0;
+      --dim: #6b7280;
+      --mono: "IBM Plex Mono", monospace;
+      --sans: "IBM Plex Sans", sans-serif;
+    }
+    html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(--text); font-family: var(--sans); }
+
+    .app { display: flex; flex-direction: column; height: 100vh; }
+
+    /* TOP BAR */
+    .topbar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 14px;
+      background: var(--panel);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+      overflow-x: auto;
+    }
+    .topbar::-webkit-scrollbar { display: none; }
+    .logo { font-family: var(--mono); font-size: 13px; font-weight: 600; color: var(--accent); white-space: nowrap; margin-right: 4px; }
+    .sep { width: 1px; height: 22px; background: var(--border); flex-shrink: 0; }
+
+    .btn {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 6px 12px; border-radius: 5px; border: 1px solid var(--border);
+      background: #22252e; color: var(--text); font-family: var(--sans);
+      font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .btn:hover { border-color: var(--accent); background: var(--accent-dim); }
+    .btn.accent { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .btn.accent:hover { opacity: 0.85; }
+    .btn.green { background: var(--green); border-color: var(--green); color: #fff; }
+    .btn.green:hover { opacity: 0.85; }
+    .btn.red { background: var(--red); border-color: var(--red); color: #fff; }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    #col-pills { display: flex; gap: 6px; flex-wrap: nowrap; overflow-x: auto; }
+    #col-pills::-webkit-scrollbar { display: none; }
+    .col-pill {
+      padding: 5px 11px; border-radius: 99px; border: 1px solid var(--border);
+      background: #22252e; color: var(--dim); font-family: var(--mono);
+      font-size: 11px; cursor: pointer; white-space: nowrap; transition: all 0.15s;
+    }
+    .col-pill:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+
+    /* STYLE BAR */
+    .stylebar {
+      display: none; align-items: center; gap: 12px;
+      padding: 7px 14px; background: #13161c;
+      border-bottom: 1px solid var(--border); flex-shrink: 0;
+    }
+    .stylebar.visible { display: flex; }
+    .style-label { font-family: var(--mono); font-size: 10px; color: var(--dim); white-space: nowrap; }
+    .style-input {
+      background: #22252e; border: 1px solid var(--border); border-radius: 4px;
+      color: var(--text); font-family: var(--mono); font-size: 12px;
+      padding: 5px 8px; outline: none; transition: border-color 0.15s;
+    }
+    .style-input:focus { border-color: var(--accent); }
+    .style-input.med { width: 130px; }
+    input[type="color"].style-input { padding: 2px 3px; width: 32px; height: 26px; cursor: pointer; }
+    .toggle-btn {
+      padding: 5px 10px; border-radius: 4px; border: 1px solid var(--border);
+      background: #22252e; color: var(--dim); font-family: var(--mono);
+      font-size: 11px; cursor: pointer; transition: all 0.15s;
+    }
+    .toggle-btn.on { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+
+    /* MAIN */
+    .main { flex: 1; display: flex; overflow: hidden; }
+
+    /* CANVAS ZONE */
+    .canvas-zone {
+      flex: 1; display: flex; align-items: center; justify-content: center;
+      overflow: auto; padding: 32px;
+      background:
+        linear-gradient(rgba(255,255,255,0.018) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.018) 1px, transparent 1px);
+      background-size: 24px 24px;
+    }
+
+    /* A4 PAGE */
+    #a4page {
+      width: 794px;
+      height: 1123px;
+      background: white;
+      position: relative;
+      flex-shrink: 0;
+      box-shadow: 0 8px 60px rgba(0,0,0,0.7);
+      overflow: hidden;
+    }
+
+    /* IMAGE BOX */
+    .ibox { position: absolute; cursor: move; border: none; background: transparent; overflow: hidden; user-select: none; }
+    .ibox.selected { outline: 1.5px dashed #4f8fff; }
+    .ibox .handles { display: none; }
+    .ibox.selected .handles { display: block; }
+    .ibox img { width: 100%; height: 100%; object-fit: contain; pointer-events: none; display: block; }
+    .ibox-del {
+      display: none;
+      position: absolute;
+      top: -12px; right: -12px;
+      width: 24px; height: 24px;
+      background: #ef4444;
+      color: white;
+      border: 2px solid white;
+      border-radius: 50%;
+      font-size: 11px;
+      font-weight: bold;
+      cursor: pointer;
+      z-index: 20;
+      align-items: center;
+      justify-content: center;
+      line-height: 1;
+      padding: 0;
+    }
+    .ibox.selected .ibox-del { display: flex; }
+
+    /* TEXT BOX CONTAINER */
+    .tbox {
+      position: absolute;
+      cursor: move;
+      /* Pas de border, pas de fond — zone invisible */
+      border: none;
+      background: transparent;
+      overflow: hidden;
+      user-select: none;
+    }
+
+    /* Contour de selection uniquement quand selectionne */
+    .tbox.selected {
+      outline: 1.5px dashed #4f8fff;
+    }
+
+    /* Poignees de redimensionnement */
+    .tbox .handles { display: none; }
+    .tbox.selected .handles { display: block; }
+
+    .handle {
+      position: absolute;
+      width: 9px; height: 9px;
+      background: #4f8fff;
+      border: 1.5px solid white;
+      border-radius: 2px;
+      z-index: 10;
+    }
+    .handle.nw { top: -5px; left: -5px; cursor: nw-resize; }
+    .handle.ne { top: -5px; right: -5px; cursor: ne-resize; }
+    .handle.sw { bottom: -5px; left: -5px; cursor: sw-resize; }
+    .handle.se { bottom: -5px; right: -5px; cursor: se-resize; }
+    .handle.n  { top: -5px; left: 50%; transform: translateX(-50%); cursor: n-resize; }
+    .handle.s  { bottom: -5px; left: 50%; transform: translateX(-50%); cursor: s-resize; }
+    .handle.w  { left: -5px; top: 50%; transform: translateY(-50%); cursor: w-resize; }
+    .handle.e  { right: -5px; top: 50%; transform: translateY(-50%); cursor: e-resize; }
+
+    /* Texte a l'interieur de la tbox */
+    .tbox-text {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+      padding: 0;
+      pointer-events: none;
+      overflow: hidden;
+      line-height: 1.1;
+      white-space: normal;
+      word-break: keep-all;
+      overflow-wrap: normal;
+      unicode-bidi: plaintext;
+    }
+
+    /* SIDEBAR */
+    .sidebar {
+      width: 210px; min-width: 210px; background: var(--panel);
+      border-left: 1px solid var(--border); display: none;
+      flex-direction: column; padding: 14px; gap: 12px; overflow: hidden;
+    }
+    .sidebar.open { display: flex; }
+    .sidebar-title { font-family: var(--mono); font-size: 10px; color: var(--dim); letter-spacing: 0.1em; text-transform: uppercase; }
+    .nav-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+    .nav-counter { font-family: var(--mono); font-size: 12px; color: var(--text); text-align: center; flex: 1; }
+    .nav-btn {
+      width: 28px; height: 28px; border-radius: 4px; border: 1px solid var(--border);
+      background: #22252e; color: var(--text); font-size: 16px; cursor: pointer;
+      display: flex; align-items: center; justify-content: center; transition: border-color 0.15s;
+    }
+    .nav-btn:hover { border-color: var(--accent); }
+    .row-list { display: flex; flex-direction: column; gap: 3px; overflow-y: auto; flex: 1; min-height: 0; }
+    .row-list::-webkit-scrollbar { width: 3px; }
+    .row-list::-webkit-scrollbar-thumb { background: var(--border); }
+    .row-item {
+      padding: 6px 8px; border-radius: 4px; border: 1px solid transparent;
+      font-family: var(--mono); font-size: 11px; color: var(--dim);
+      cursor: pointer; white-space: normal; overflow: hidden; line-height: 1.4; min-height: 28px;
+      transition: all 0.12s;
+    }
+    .row-item:hover { color: var(--text); background: #22252e; }
+    .row-item.active { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+
+    .progress-wrap { display: none; flex-direction: column; gap: 4px; }
+    .progress-bar { height: 4px; background: var(--border); border-radius: 99px; overflow: hidden; }
+    .progress-fill { height: 100%; background: var(--green); border-radius: 99px; width: 0%; transition: width 0.2s; }
+    .progress-label { font-family: var(--mono); font-size: 10px; color: var(--dim); }
+
+    /* SIDEBAR GAUCHE - fichiers */
+    .sidebar-left {
+      width: 200px; min-width: 200px;
+      background: var(--panel);
+      border-right: 1px solid var(--border);
+      display: flex; flex-direction: column;
+      padding: 14px; gap: 10px; overflow: hidden;
+    }
+    .file-list { display: flex; flex-direction: column; gap: 4px; overflow-y: auto; flex: 1; min-height: 0; }
+    .file-list::-webkit-scrollbar { width: 3px; }
+    .file-list::-webkit-scrollbar-thumb { background: var(--border); }
+    .file-item {
+      display: flex; align-items: center; gap: 6px;
+      padding: 7px 8px; border-radius: 4px; border: 1px solid transparent;
+      font-family: var(--mono); font-size: 11px; color: var(--dim);
+      cursor: pointer; transition: all 0.12s;
+    }
+    .file-item:hover { color: var(--text); background: #22252e; }
+    .file-item.active { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+    .file-item-name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .file-del {
+      width: 18px; height: 18px; border-radius: 3px; border: none;
+      background: transparent; color: var(--dim); font-size: 12px;
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0; transition: all 0.12s;
+    }
+    .file-del:hover { background: var(--red); color: white; }
+  </style>
+</head>
+<body>
+<div class="app">
+
+  <!-- TOP BAR -->
+  <div class="topbar">
+    <span class="logo">🐑 Q.anva 🐑</span>
+    <div class="sep"></div>
+
+    <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" style="display:none" />
+    <div class="sep"></div>
+    <button class="btn" id="addBoxBtn" onclick="addTextBox()">+ Zone de texte</button>
+    <button class="btn" onclick="addStaticBox()">+ Texte fixe</button>
+    <input type="file" id="imgInput" accept="image/*" style="display:none" />
+    <button class="btn" onclick="document.getElementById('imgInput').click()">+ Image</button>
+    <div class="sep"></div>
+
+    <div id="col-pills"></div>
+
+    <div style="margin-left:auto; display:flex; gap:8px; align-items:center; flex-shrink:0;">
+      <button class="btn" id="orientBtn" onclick="toggleOrientation()">&#8635; Rotation</button>
+      <button class="btn green" onclick="exportPDF()">&#128640; Exporter PDF</button>
+    </div>
+  </div>
+
+  <!-- STYLE BAR -->
+  <div class="stylebar" id="stylebar">
+    <span class="style-label" id="lblPolice">Police</span>
+    <input class="style-input med" id="fontFamily" value="Arial" placeholder="Arial, Impact..." oninput="updateSelectedStyle()" />
+
+    <span class="style-label" id="lblCouleur">Couleur</span>
+    <input class="style-input" type="color" id="textColor" value="#111111" onchange="updateSelectedStyle()" />
+
+    <button class="toggle-btn" id="boldBtn" onclick="toggleBold()">BOLT</button>
+    <button class="toggle-btn" id="alignBtn" onclick="cycleAlign()">G</button>
+
+    <div class="sep"></div>
+    <button class="btn" onclick="zFront()" title="Premier plan">&#8679;&#8679; 1er plan</button>
+    <button class="btn" onclick="zUp()" title="Monter d'un cran">&#8679; Avant</button>
+    <button class="btn" onclick="zDown()" title="Descendre d'un cran">&#8681; Arriere</button>
+    <button class="btn" onclick="zBack()" title="Arriere-plan">&#8681;&#8681; Fond</button>
+    <div class="sep"></div>
+    <button class="btn red" onclick="deleteSelected()">&#10005; Supprimer</button>
+    <div class="sep" id="staticSep" style="display:none"></div>
+    <span class="style-label" id="staticLabel" style="display:none">Texte fixe</span>
+    <input class="style-input" id="staticTextInput" style="display:none;width:200px" placeholder="Tapez votre texte..." oninput="updateStaticText()" />
+  </div>
+
+  <!-- MAIN -->
+  <div class="main">
+    <!-- SIDEBAR GAUCHE : fichiers -->
+    <div class="sidebar-left" id="sidebarLeft">
+      <span class="sidebar-title">Fichiers</span>
+      <button class="btn accent" style="font-size:11px;padding:6px 8px;" onclick="document.getElementById('fileInput').click()">+ Charger fichier</button>
+      <div class="file-list" id="fileList"></div>
+    </div>
+
+    <div class="canvas-zone" id="canvasZone">
+      <div id="a4page"></div>
+    </div>
+
+    <div class="sidebar" id="sidebar">
+      <span class="sidebar-title">Commandes</span>
+      <div class="nav-row">
+        <button class="nav-btn" id="prevBtn">&#8249;</button>
+        <span class="nav-counter" id="navCounter">1 / 1</span>
+        <button class="nav-btn" id="nextBtn">&#8250;</button>
+      </div>
+      <div class="row-list" id="rowList"></div>
+      <div class="sep" style="width:100%;height:1px;"></div>
+      <div class="progress-wrap" id="progressWrap">
+        <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+        <span class="progress-label" id="progressLabel">0 / 0</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // STATE
+  let files = [];         // [{name, rows}]
+  let activeFileIdx = -1; // index du fichier actif
+  let excelData = [];     // rows du fichier actif (raccourci)
+  let isLandscape = false;
+  let zCounter = 1;
+  let currentRow = 0;
+  let selectedBox = null;
+  let boxCounter = 0;
+
+  // Chaque box : { id, el, colKey, fontFamily, color, bold, align }
+  const boxes = [];
+
+  const a4 = document.getElementById("a4page");
+
+  // ── AJOUTER UNE ZONE DE TEXTE ──────────────────────────
+  function addTextBox(colKey) {
+    boxCounter++;
+    const id = "box_" + boxCounter;
+
+    const box = document.createElement("div");
+    box.className = "tbox";
+    box.dataset.id = id;
+    box.style.left = "60px";
+    box.style.top = "60px";
+    box.style.width = "300px";
+    box.style.height = "100px";
+    box.style.zIndex = ++zCounter;
+
+    // Texte interieur
+    const textEl = document.createElement("div");
+    textEl.className = "tbox-text";
+    textEl.style.fontFamily = "Arial";
+    textEl.style.color = "#111111";
+    textEl.style.fontWeight = "normal";
+    textEl.style.textAlign = "left";
+    textEl.style.justifyContent = "flex-start";
+    textEl.style.fontSize = "30px";
+
+    // Poignees
+    const handles = document.createElement("div");
+    handles.className = "handles";
+    ["nw","n","ne","w","e","sw","s","se"].forEach(dir => {
+      const h = document.createElement("div");
+      h.className = "handle " + dir;
+      h.dataset.dir = dir;
+      handles.appendChild(h);
+    });
+
+    box.appendChild(textEl);
+    box.appendChild(handles);
+    a4.appendChild(box);
+
+    const boxObj = {
+      id,
+      el: box,
+      textEl,
+      colKey: colKey || null,
+      staticText: null,
+      fontFamily: "Arial",
+      color: "#111111",
+      bold: false,
+      align: "left"
+    };
+    boxes.push(boxObj);
+
+    // Affiche la valeur si colonne et donnee disponibles
+    refreshBoxText(boxObj);
+
+    setupDrag(box, boxObj);
+    setupResize(handles, box, boxObj);
+    selectBox(boxObj);
+
+    return boxObj;
+  }
+
+  // ── AJOUTER UNE ZONE DE TEXTE FIXE ────────────────────
+  function addStaticBox() {
+    const b = addTextBox();
+    b.staticText = "";
+    b.colKey = null;
+    refreshBoxText(b);
+    // Affiche le champ texte fixe dans la stylebar
+    showStaticInput(b);
+  }
+
+  // ── AJOUTER UNE IMAGE ───────────────────────────────────
+  function addImageBox(src) {
+    const el = document.createElement("div");
+    el.className = "ibox";
+    el.dataset.type = "image";
+    el.style.left = "60px";
+    el.style.top = "60px";
+    el.style.width = "200px";
+    el.style.height = "200px";
+    el.style.zIndex = ++zCounter;
+
+    const img = document.createElement("img");
+    img.src = src;
+    img.draggable = false;
+
+    // Bouton supprimer flottant (visible uniquement quand selectionne)
+    const delBtn = document.createElement("button");
+    delBtn.textContent = "✕";
+    delBtn.className = "ibox-del";
+    delBtn.addEventListener("mousedown", e => {
+      e.stopPropagation();
+      el.remove();
+      if (selectedBox && selectedBox.el === el) {
+        selectedBox = null;
+      }
+    });
+    el.appendChild(delBtn);
+
+    const handles = document.createElement("div");
+    handles.className = "handles";
+    ["nw","n","ne","w","e","sw","s","se"].forEach(dir => {
+      const h = document.createElement("div");
+      h.className = "handle " + dir;
+      h.dataset.dir = dir;
+      handles.appendChild(h);
+    });
+
+    el.appendChild(img);
+    el.appendChild(handles);
+    a4.appendChild(el);
+
+    // Objet image (pas dans boxes[] pour ne pas etre affecte par refreshAllBoxes)
+    const imgObj = { el, isImage: true };
+
+    // Drag
+    el.addEventListener("mousedown", e => {
+      if (e.target.classList.contains("handle")) return;
+      e.preventDefault();
+      selectBox(imgObj);
+
+      const startX = e.clientX;
+      const startY = e.clientY;
+      const startL = el.offsetLeft;
+      const startT = el.offsetTop;
+
+      function onMove(ev) {
+        el.style.left = (startL + ev.clientX - startX) + "px";
+        el.style.top  = (startT + ev.clientY - startY) + "px";
+      }
+      function onUp() {
+        document.removeEventListener("mousemove", onMove);
+        document.removeEventListener("mouseup", onUp);
+      }
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mouseup", onUp);
+    });
+
+    // Resize (reutilise setupResize avec un objet vide - pas de fitText)
+    setupResize(handles, el, null);
+
+    selectBox(imgObj);
+  }
+
+  // Lecture du fichier image
+  document.getElementById("imgInput").onchange = function(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function(ev) {
+      addImageBox(ev.target.result);
+    };
+    reader.readAsDataURL(file);
+    // Reset input pour pouvoir reimporter la meme image
+    e.target.value = "";
+  };
+
+  // ── ASSIGNER UNE COLONNE A LA BOX SELECTIONNEE ─────────
+  function assignColumn(colKey) {
+    if (!selectedBox) {
+      // Si aucune box selectionnee, cree une nouvelle
+      const b = addTextBox(colKey);
+      b.colKey = colKey;
+      refreshBoxText(b);
+      return;
+    }
+    selectedBox.colKey = colKey;
+    refreshBoxText(selectedBox);
+  }
+
+  // Detection arabe : plage Unicode Arabic
+  function isArabic(str) {
+    return /[؀-ۿݐ-ݿࢠ-ࣿﭐ-﷿ﹰ-﻿]/.test(str);
+  }
+
+  // ── METTRE A JOUR LE TEXTE D'UNE BOX ───────────────────
+  function refreshBoxText(boxObj) {
+    let val = "";
+    if (boxObj.staticText !== null) {
+      val = boxObj.staticText;
+    } else if (boxObj.colKey) {
+      const row = excelData[currentRow] || {};
+      if (row[boxObj.colKey] !== undefined) val = String(row[boxObj.colKey]);
+    }
+    boxObj.textEl.textContent = val;
+
+    // RTL automatique si arabe detecte
+    if (isArabic(val)) {
+      boxObj.textEl.style.direction = "rtl";
+      boxObj.textEl.style.textAlign = boxObj.align === "left" ? "right" : boxObj.align;
+      boxObj.textEl.style.justifyContent = "flex-end";
+    } else {
+      boxObj.textEl.style.direction = "ltr";
+      const justify = { left: "flex-start", center: "center", right: "flex-end" };
+      boxObj.textEl.style.justifyContent = justify[boxObj.align] || "flex-start";
+    }
+
+    if (val) fitTextToBox(boxObj);
+  }
+
+  // ── FIT TEXT EN TEMPS REEL ──────────────────────────────
+  // Le conteneur est la reference. On cherche la fontSize max
+  // ou le texte tient sans sortir ni etre tronque.
+  function fitTextToBox(boxObj) {
+    const el = boxObj.el;
+    const textEl = boxObj.textEl;
+    const text = textEl.textContent;
+    if (!text) return;
+
+    const W = el.offsetWidth;
+    const H = el.offsetHeight;
+    if (W <= 0 || H <= 0) return;
+
+    // Probe hors ecran avec word-wrap a largeur fixe (= largeur du conteneur)
+    // white-space:normal + word-break:keep-all = retour a la ligne sur les mots, sans cesure
+    const probe = document.createElement("div");
+    probe.style.cssText = [
+      "position:absolute",
+      "visibility:hidden",
+      "pointer-events:none",
+      "white-space:normal",
+      "word-break:keep-all",
+      "width:" + W + "px",
+      "line-height:1.1",
+      "font-family:" + boxObj.fontFamily,
+      "font-weight:" + (boxObj.bold ? "bold" : "normal")
+    ].join(";");
+    document.body.appendChild(probe);
+
+    // Probe mot unique pour verifier qu'aucun mot ne depasse la largeur
+    const probeWord = document.createElement("div");
+    probeWord.style.cssText = [
+      "position:absolute",
+      "visibility:hidden",
+      "pointer-events:none",
+      "white-space:nowrap",
+      "font-family:" + boxObj.fontFamily,
+      "font-weight:" + (boxObj.bold ? "bold" : "normal")
+    ].join(";");
+    document.body.appendChild(probeWord);
+
+    let lo = 1, hi = 1500, best = 1;
+    const words = text.split(/\s+/).filter(Boolean);
+
+    while (lo <= hi) {
+      const mid = Math.floor((lo + hi) / 2);
+      probe.style.fontSize = mid + "px";
+      probe.textContent = text;
+      probeWord.style.fontSize = mid + "px";
+
+      // Verifie que le texte tient en hauteur
+      const heightOk = probe.offsetHeight <= H;
+
+      // Verifie que chaque mot individuel tient en largeur (pas de cesure)
+      const longestWord = words.reduce((max, w) => {
+        probeWord.textContent = w;
+        return Math.max(max, probeWord.offsetWidth);
+      }, 0);
+      const widthOk = longestWord <= W;
+
+      if (heightOk && widthOk) {
+        best = mid;
+        lo = mid + 1;
+      } else {
+        hi = mid - 1;
+      }
+    }
+
+    document.body.removeChild(probe);
+    document.body.removeChild(probeWord);
+    textEl.style.fontSize = best + "px";
+  }
+
+  // ── SELECTION ───────────────────────────────────────────
+  function selectBox(boxObj) {
+    // Deselectionne l'ancien
+    if (selectedBox) {
+      selectedBox.el.classList.remove("selected");
+    }
+    selectedBox = boxObj;
+    if (!boxObj) {
+      document.getElementById("stylebar").classList.remove("visible");
+      hideStaticInput();
+      return;
+    }
+    boxObj.el.classList.add("selected");
+    // Pour les images : stylebar avec seulement z-index + supprimer
+    if (boxObj.isImage) {
+      hideStaticInput();
+      const textControls = ["lblPolice","fontFamily","lblCouleur","textColor","boldBtn","alignBtn"];
+      textControls.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = "none";
+      });
+      document.getElementById("stylebar").classList.add("visible");
+      return;
+    }
+    // Pour les textes : reafficher tous les controles
+    const textControls = ["lblPolice","fontFamily","lblCouleur","textColor","boldBtn","alignBtn"];
+    textControls.forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.style.display = "";
+    });
+    // Met a jour la stylebar
+    document.getElementById("stylebar").classList.add("visible");
+    document.getElementById("fontFamily").value = boxObj.fontFamily;
+    document.getElementById("textColor").value = boxObj.color;
+    document.getElementById("boldBtn").classList.toggle("on", boxObj.bold);
+    const alignLabels = { left: "G", center: "C", right: "D" };
+    document.getElementById("alignBtn").textContent = alignLabels[boxObj.align] || "G";
+    // Affiche le champ texte fixe si applicable
+    if (boxObj.staticText !== null) {
+      showStaticInput(boxObj);
+    } else {
+      hideStaticInput();
+    }
+  }
+
+  // Clic sur le A4 (fond) ou hors du A4 = deselectionne
+  a4.addEventListener("mousedown", e => {
+    if (e.target === a4) selectBox(null);
+  });
+  document.getElementById("canvasZone").addEventListener("mousedown", e => {
+    if (e.target === document.getElementById("canvasZone")) selectBox(null);
+  });
+
+  // ── DRAG ────────────────────────────────────────────────
+  function setupDrag(box, boxObj) {
+    box.addEventListener("mousedown", e => {
+      // Ignore si c'est une poignee de resize
+      if (e.target.classList.contains("handle")) return;
+      e.preventDefault();
+      selectBox(boxObj);
+
+      const startX = e.clientX;
+      const startY = e.clientY;
+      const startL = box.offsetLeft;
+      const startT = box.offsetTop;
+
+      function onMove(ev) {
+        const nx = startL + (ev.clientX - startX);
+        const ny = startT + (ev.clientY - startY);
+        box.style.left = nx + "px";
+        box.style.top = ny + "px";
+      }
+      function onUp() {
+        document.removeEventListener("mousemove", onMove);
+        document.removeEventListener("mouseup", onUp);
+      }
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mouseup", onUp);
+    });
+  }
+
+  // ── RESIZE ──────────────────────────────────────────────
+  function setupResize(handlesEl, box, boxObj) {
+    handlesEl.querySelectorAll(".handle").forEach(handle => {
+      handle.addEventListener("mousedown", e => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        const dir = handle.dataset.dir;
+        const startX = e.clientX;
+        const startY = e.clientY;
+        const startL = box.offsetLeft;
+        const startT = box.offsetTop;
+        const startW = box.offsetWidth;
+        const startH = box.offsetHeight;
+
+        function onMove(ev) {
+          const dx = ev.clientX - startX;
+          const dy = ev.clientY - startY;
+
+          let newL = startL, newT = startT, newW = startW, newH = startH;
+
+          if (dir.includes("e")) newW = Math.max(40, startW + dx);
+          if (dir.includes("s")) newH = Math.max(20, startH + dy);
+          if (dir.includes("w")) { newW = Math.max(40, startW - dx); newL = startL + (startW - newW); }
+          if (dir.includes("n")) { newH = Math.max(20, startH - dy); newT = startT + (startH - newH); }
+
+          box.style.left = newL + "px";
+          box.style.top = newT + "px";
+          box.style.width = newW + "px";
+          box.style.height = newH + "px";
+
+          // Recalcul texte en temps reel (pas pour les images)
+          if (boxObj) fitTextToBox(boxObj);
+        }
+
+        function onUp() {
+          document.removeEventListener("mousemove", onMove);
+          document.removeEventListener("mouseup", onUp);
+        }
+
+        document.addEventListener("mousemove", onMove);
+        document.addEventListener("mouseup", onUp);
+      });
+    });
+  }
+
+  // ── STYLE BAR ───────────────────────────────────────────
+  function showStaticInput(boxObj) {
+    document.getElementById("staticSep").style.display = "";
+    document.getElementById("staticLabel").style.display = "";
+    const inp = document.getElementById("staticTextInput");
+    inp.style.display = "";
+    inp.value = boxObj.staticText || "";
+  }
+
+  function hideStaticInput() {
+    document.getElementById("staticSep").style.display = "none";
+    document.getElementById("staticLabel").style.display = "none";
+    document.getElementById("staticTextInput").style.display = "none";
+  }
+
+  function updateStaticText() {
+    if (!selectedBox || selectedBox.staticText === null) return;
+    selectedBox.staticText = document.getElementById("staticTextInput").value;
+    refreshBoxText(selectedBox);
+  }
+
+  function updateSelectedStyle() {
+    if (!selectedBox) return;
+    selectedBox.fontFamily = document.getElementById("fontFamily").value || "Arial";
+    selectedBox.color = document.getElementById("textColor").value;
+    selectedBox.textEl.style.fontFamily = selectedBox.fontFamily;
+    selectedBox.textEl.style.color = selectedBox.color;
+    fitTextToBox(selectedBox);
+  }
+
+  function toggleBold() {
+    if (!selectedBox) return;
+    selectedBox.bold = !selectedBox.bold;
+    selectedBox.textEl.style.fontWeight = selectedBox.bold ? "bold" : "normal";
+    document.getElementById("boldBtn").classList.toggle("on", selectedBox.bold);
+    fitTextToBox(selectedBox);
+  }
+
+  function cycleAlign() {
+    if (!selectedBox) return;
+    const aligns = ["left", "center", "right"];
+    const labels = { left: "G", center: "C", right: "D" };
+    const justify = { left: "flex-start", center: "center", right: "flex-end" };
+    const idx = aligns.indexOf(selectedBox.align);
+    selectedBox.align = aligns[(idx + 1) % aligns.length];
+    selectedBox.textEl.style.textAlign = selectedBox.align;
+    selectedBox.textEl.style.justifyContent = justify[selectedBox.align];
+    document.getElementById("alignBtn").textContent = labels[selectedBox.align];
+  }
+
+  function zFront() {
+    if (!selectedBox) return;
+    zCounter++;
+    selectedBox.el.style.zIndex = zCounter;
+  }
+
+  function zBack() {
+    if (!selectedBox) return;
+    selectedBox.el.style.zIndex = 0;
+  }
+
+  function zUp() {
+    if (!selectedBox) return;
+    zCounter++;
+    selectedBox.el.style.zIndex = zCounter;
+  }
+
+  function zDown() {
+    if (!selectedBox) return;
+    // zIndex minimum 0, on ne passe pas en negatif
+    const cur = parseInt(selectedBox.el.style.zIndex) || 1;
+    selectedBox.el.style.zIndex = Math.max(0, cur - 1);
+  }
+
+  function deleteSelected() {
+    if (!selectedBox) return;
+    selectedBox.el.remove();
+    if (!selectedBox.isImage) {
+      const idx = boxes.indexOf(selectedBox);
+      if (idx > -1) boxes.splice(idx, 1);
+    }
+    selectedBox = null;
+    document.getElementById("stylebar").classList.remove("visible");
+    hideStaticInput();
+  }
+
+  // ── IMPORT EXCEL / CSV ──────────────────────────────────
+  document.getElementById("fileInput").onchange = function(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    const fileName = file.name;
+    const reader = new FileReader();
+    reader.onload = function(ev) {
+      const wb = XLSX.read(new Uint8Array(ev.target.result), { type: "array" });
+      const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: "" });
+      if (!rows.length) { alert("Fichier vide."); return; }
+      files.push({ name: fileName, rows: rows });
+      buildFileList();
+      switchFile(files.length - 1);
+    };
+    reader.readAsArrayBuffer(file);
+    e.target.value = "";
+  };
+
+  function buildFileList() {
+    const list = document.getElementById("fileList");
+    list.innerHTML = "";
+    files.forEach((f, i) => {
+      const item = document.createElement("div");
+      item.className = "file-item" + (i === activeFileIdx ? " active" : "");
+
+      const name = document.createElement("span");
+      name.className = "file-item-name";
+      name.textContent = f.name;
+      name.title = f.name;
+
+      const del = document.createElement("button");
+      del.className = "file-del";
+      del.textContent = "x";
+      del.title = "Supprimer ce fichier";
+      del.onclick = (e) => {
+        e.stopPropagation();
+        removeFile(i);
+      };
+
+      item.appendChild(name);
+      item.appendChild(del);
+      item.onclick = () => switchFile(i);
+      list.appendChild(item);
+    });
+  }
+
+  function switchFile(i) {
+    activeFileIdx = i;
+    excelData = files[i].rows;
+    currentRow = 0;
+    buildColPills();
+    buildRowList();
+    document.getElementById("sidebar").classList.add("open");
+    updateNavCounter();
+    refreshAllBoxes();
+    buildFileList();
+  }
+
+  function removeFile(i) {
+    files.splice(i, 1);
+    if (!files.length) {
+      activeFileIdx = -1;
+      excelData = [];
+      document.getElementById("col-pills").innerHTML = "";
+      document.getElementById("rowList").innerHTML = "";
+      document.getElementById("sidebar").classList.remove("open");
+      buildFileList();
+      return;
+    }
+    const newIdx = Math.min(i, files.length - 1);
+    switchFile(newIdx);
+  }
+
+  function buildColPills() {
+    const container = document.getElementById("col-pills");
+    container.innerHTML = "";
+    Object.keys(excelData[0]).forEach(col => {
+      const pill = document.createElement("button");
+      pill.className = "col-pill";
+      pill.textContent = col;
+      pill.title = "Assigner a la zone selectionnee (ou creer une nouvelle)";
+      pill.onclick = () => assignColumn(col);
+      container.appendChild(pill);
+    });
+  }
+
+  function buildRowList() {
+    const list = document.getElementById("rowList");
+    list.innerHTML = "";
+    excelData.forEach((row, i) => {
+      const item = document.createElement("div");
+      item.className = "row-item" + (i === currentRow ? " active" : "");
+      const vals = Object.values(row).slice(0, 2).map(v => String(v)).filter(Boolean);
+      item.textContent = vals.join(" - ") || ("Ligne " + (i + 1));
+      item.onclick = () => goToRow(i);
+      list.appendChild(item);
+    });
+  }
+
+  function goToRow(i) {
+    currentRow = i;
+    updateNavCounter();
+    document.getElementById("rowList").querySelectorAll(".row-item").forEach((el, idx) => {
+      el.classList.toggle("active", idx === i);
+    });
+    const active = document.getElementById("rowList").querySelector(".active");
+    if (active) active.scrollIntoView({ block: "nearest" });
+    refreshAllBoxes();
+  }
+
+  function updateNavCounter() {
+    document.getElementById("navCounter").textContent = (currentRow + 1) + " / " + excelData.length;
+  }
+
+  function refreshAllBoxes() {
+    boxes.forEach(b => refreshBoxText(b));
+  }
+
+  function toggleOrientation() {
+    isLandscape = !isLandscape;
+    const a4el = document.getElementById("a4page");
+    if (isLandscape) {
+      a4el.style.width = "1123px";
+      a4el.style.height = "794px";
+    } else {
+      a4el.style.width = "794px";
+      a4el.style.height = "1123px";
+    }
+    document.getElementById("orientBtn").style.borderColor = isLandscape ? "var(--accent)" : "";
+    document.getElementById("orientBtn").style.color = isLandscape ? "var(--accent)" : "";
+    // Recalcule tous les textes
+    boxes.forEach(b => fitTextToBox(b));
+  }
+
+  document.getElementById("prevBtn").onclick = () => { if (currentRow > 0) goToRow(currentRow - 1); };
+  document.getElementById("nextBtn").onclick = () => { if (currentRow < excelData.length - 1) goToRow(currentRow + 1); };
+
+  // ── EXPORT PDF ──────────────────────────────────────────
+  async function exportPDF() {
+    if (!excelData.length) { alert("Chargez d'abord un fichier."); return; }
+
+    const savedRow = currentRow;
+    const btn = document.querySelector(".btn.green");
+    btn.disabled = true;
+
+    const pw = document.getElementById("progressWrap");
+    const pf = document.getElementById("progressFill");
+    const pl = document.getElementById("progressLabel");
+    pw.style.display = "flex";
+    pf.style.width = "0%";
+    pl.textContent = "0 / " + excelData.length;
+
+    // Cache les contours de selection
+    selectBox(null);
+
+    const { jsPDF } = window.jspdf;
+    // Orientation correcte selon l'etat du canvas
+    const orientation = isLandscape ? "l" : "p";
+    const doc = new jsPDF(orientation, "pt", "a4");
+    const pdfW = doc.internal.pageSize.getWidth();
+    const pdfH = doc.internal.pageSize.getHeight();
+
+    for (let i = 0; i < excelData.length; i++) {
+      goToRow(i);
+      await new Promise(r => setTimeout(r, 40));
+
+      // dom-to-image-more utilise foreignObject SVG
+      // ce qui preserve le shaping arabe (connexion des glyphes)
+      const imgData = await domtoimage.toJpeg(a4, {
+        quality: 0.95,
+        bgcolor: "#ffffff",
+        width: a4.offsetWidth,
+        height: a4.offsetHeight,
+        style: { transform: "none" }
+      });
+      if (i > 0) doc.addPage();
+      // Etire l'image pour remplir exactement la page PDF (portrait ou paysage)
+      doc.addImage(imgData, "JPEG", 0, 0, pdfW, pdfH);
+
+      const pct = Math.round(((i + 1) / excelData.length) * 100);
+      pf.style.width = pct + "%";
+      pl.textContent = (i + 1) + " / " + excelData.length;
+    }
+
+    goToRow(savedRow);
+
+    // Demande le nom du fichier a l'utilisateur
+    const defaultName = "labelforge_export";
+    const userInput = window.prompt("Nom du fichier PDF (sans extension) :", defaultName);
+    // Si l'utilisateur annule le prompt on ne sauvegarde pas
+    if (userInput === null) {
+      btn.disabled = false;
+      pw.style.display = "none";
+      return;
+    }
+    const fileName = (userInput.trim() || defaultName) + ".pdf";
+    doc.save(fileName);
+
+    btn.disabled = false;
+    pw.style.display = "none";
+  }
+</script>
+</body>
+</html>
