@@ -47,8 +47,9 @@ Then open `index.html` in a modern browser (Chrome, Edge, Firefox, Safari).
 python -m http.server 8000
 # then visit http://localhost:8000
 Serving locally avoids some CORS quirks with file:// URLs when loading fonts.
+```
 
-Usage
+### Usage
 Create a canvas — pick a preset (A4, A3, 1080p…) or enter your own size.
 
 Add objects — click Field to bind a spreadsheet column, Static for
@@ -65,7 +66,7 @@ Style — use the style bar to set font, color, outline, bold/italic, alignment.
 Export — click Export PDF. Watch the progress bar and console, then
 download your multi-page PDF.
 
-Keyboard shortcuts
+### Keyboard shortcuts
 Action	Shortcut
 Delete selected object	Del / Backspace
 Duplicate selected object	Ctrl/Cmd + D
@@ -73,7 +74,8 @@ Move object by 1 px	Arrow keys
 Move object by 10 px	Shift + Arrow keys
 Deselect / close modal	Esc
 Zoom in / out	Ctrl/Cmd + scroll
-Project structure
+
+### Project structure
 text
 print-gen/
 ├── index.html      # Markup — landing screen + editor
@@ -87,25 +89,13 @@ Three files, zero build step. Edit and refresh.
 Going fully offline
 By default, three libraries are loaded from CDNs:
 
-Library	Purpose
+### Library	Purpose
 SheetJS (xlsx.full.min.js)	Parse .xlsx / .csv files
 jsPDF (jspdf.umd.min.js)	Build the output PDF
 dom-to-image-more	Rasterize the DOM page to JPEG for embedding
 To remove the network dependency:
 
-Download each .min.js file into a vendor/ folder.
-
-In index.html, replace the three <script src="https://..."> tags with local paths:
-
-html
-<script src="vendor/xlsx.full.min.js"></script>
-<script src="vendor/jspdf.umd.min.js"></script>
-<script src="vendor/dom-to-image-more.min.js"></script>
-For identical font rendering offline, download the .woff2 files for the fonts
-you use (Google Fonts) and self-host them. Fonts are rasterized into the PDF at export
-time, so the local rendering must match what you expect in the final file.
-
-How it works (short version)
+### How it works (short version)
 The canvas is a <div> sized in CSS pixels, containing absolutely-positioned
 .obj elements (text or image).
 
@@ -120,7 +110,7 @@ embeds the JPEG into a jsPDF document sized to match the canvas.
 Templates are stored as JSON in localStorage — images are inlined as
 data URLs, so a template file can get large if it contains photos.
 
-Browser support
+### Browser support
 Browser	Status
 Chrome / Edge (Chromium)	✅ Tested
 Firefox	✅ Tested
@@ -135,11 +125,11 @@ older Safari versions.
 
 Export is raster-based (JPEG), not vector. Text is not selectable in the PDF.
 
-Contributing
+### Contributing
 Contributions are welcome. By submitting a pull request you agree to license your
 contribution under the same terms as this project (GPL-3.0-or-later).
 
-Fork the repo.
+### Fork the repo.
 
 Create a branch: git checkout -b feature/my-feature.
 
