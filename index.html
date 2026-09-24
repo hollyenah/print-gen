@@ -1,0 +1,246 @@
+<!DOCTYPE html> <!-- V2.0 -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Print-Gen</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&family=Amiri:wght@400;700&family=Cairo:wght@400;700&family=Lato:wght@400;700&family=Merriweather:wght@400;700&family=Montserrat:wght@400;700&family=Noto+Sans+Arabic:wght@400;700&family=Open+Sans:wght@400;700&family=Oswald:wght@400;700&family=Playfair+Display:wght@400;700&family=Poppins:wght@400;700&family=Roboto:wght@400;700&family=Roboto+Mono:wght@400;700&family=Tajawal:wght@400;700&display=swap" rel="stylesheet">
+<script>
+  (function () {
+    try {
+      var saved = localStorage.getItem('printgen.theme');
+      var dark = saved ? saved === 'dark'
+                       : matchMedia('(prefers-color-scheme: dark)').matches;
+      document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+    } catch (e) {}
+  })();
+</script>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- LANDING -->
+<div id="landing" class="screen active">
+  <header class="landing-top">
+    <div class="brand">
+      <span class="brand-mark">P</span>
+      <span class="brand-name">Print-Gen</span>
+    </div>
+    <div class="landing-top-actions">
+    <button class="icon-btn theme-btn" id="themeLanding" data-icon="moon" title="Toggle theme"></button>
+    <span class="pill-note">Works offline</span>
+    </div>
+  </header>
+
+  <main class="landing-main">
+    <section class="hero">
+      <h1>Design once.<br><em>Generate hundreds.</em></h1>
+      <p>Lay out a page, drop in a spreadsheet, export every row as its own PDF page.
+         Nothing leaves your machine.</p>
+    </section>
+
+    <!-- NEW CANVAS -->
+    <section class="panel">
+      <div class="panel-head">
+        <h2>New canvas</h2>
+        <span class="panel-sub">Pick a preset or enter your own size</span>
+      </div>
+      <div class="preset-grid" id="presetGrid"></div>
+
+      <div class="custom-row">
+        <div class="field">
+          <label for="cw">Width</label>
+          <input type="number" id="cw" value="210" min="1" step="any">
+        </div>
+        <span class="times">×</span>
+        <div class="field">
+          <label for="ch">Height</label>
+          <input type="number" id="ch" value="297" min="1" step="any">
+        </div>
+        <div class="field">
+          <label for="cu">Unit</label>
+          <select id="cu">
+            <option value="mm">mm</option>
+            <option value="cm">cm</option>
+            <option value="in">in</option>
+            <option value="px">px</option>
+            <option value="pt">pt</option>
+          </select>
+        </div>
+        <button class="btn primary" id="createCustom">
+          <i data-icon="plus"></i><span>Create canvas</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- TEMPLATES -->
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Saved templates</h2>
+        <span class="panel-sub" id="tplCount"></span>
+      </div>
+      <div id="templateList" class="template-list"></div>
+    </section>
+  </main>
+    <footer class="site-footer">
+         <span>&copy; <span id="year"></span> Archalian</span>
+    </footer>
+</div>
+
+<!-- EDITOR -->
+<div id="editor" class="screen">
+
+  <!-- TOP BAR -->
+  <header class="topbar">
+    <button class="icon-btn" id="backBtn" title="Back to start" data-icon="back"></button>
+    <div class="brand-mini">Print-Gen</div>
+    <span class="divider"></span>
+    <div class="doc-badge" id="docBadge">—</div>
+    <span class="divider"></span>
+
+    <button class="btn" id="addTextBtn"><i data-icon="text"></i><span>Field</span></button>
+    <button class="btn" id="addStaticBtn"><i data-icon="staticText"></i><span>Static</span></button>
+    <button class="btn" id="addImageBtn"><i data-icon="image"></i><span>Image</span></button>
+
+    <span class="divider"></span>
+    <div class="col-strip" id="colStrip"></div>
+
+    <div class="topbar-right">
+    <button class="icon-btn theme-btn" id="themeEditor" data-icon="moon" title="Toggle theme"></button>
+    <button class="btn" id="saveTplBtn"><i data-icon="save"></i><span>Save template</span></button>
+    <button class="btn primary" id="exportBtn"><i data-icon="download"></i><span>Export PDF</span></button>
+    </div>
+  </header>
+
+  <!-- STYLE BAR -->
+  <div class="stylebar" id="stylebar">
+    <div class="sb-static" id="sbStatic">
+      <label>Static text</label>
+      <input type="text" id="staticInput" placeholder="Type your text…">
+      <span class="divider"></span>
+    </div>
+
+    <div class="sb-group" id="sbText">
+      <label>Font</label>
+      <select id="fontSelect" class="sel-font"></select>
+
+      <label>Color</label>
+      <input type="color" id="textColor" value="#111111" class="swatch">
+
+      <label>Outline</label>
+      <input type="number" id="strokeW" value="0" min="0" max="40" step="0.5" class="num-xs" title="Outline thickness (px)">
+      <input type="color" id="strokeColor" value="#000000" class="swatch" title="Outline color">
+
+      <button class="tgl" id="boldBtn" data-icon="bold" title="Bold"></button>
+      <button class="tgl" id="italicBtn" data-icon="italic" title="Italic"></button>
+      <button class="tgl" id="alignBtn" data-icon="alignL" title="Alignment"></button>
+    </div>
+
+    <span class="divider"></span>
+
+    <div class="sb-group">
+      <button class="icon-btn sm" id="zFront" data-icon="front" title="Bring to front"></button>
+      <button class="icon-btn sm" id="zUp" data-icon="up" title="Move forward"></button>
+      <button class="icon-btn sm" id="zDown" data-icon="down" title="Move backward"></button>
+      <button class="icon-btn sm" id="zBack" data-icon="back2" title="Send to back"></button>
+    </div>
+
+    <span class="divider"></span>
+    <button class="icon-btn sm danger" id="deleteBtn" data-icon="trash" title="Delete (Del)"></button>
+  </div>
+
+  <!-- MAIN -->
+  <div class="main">
+
+    <!-- LEFT SIDEBAR -->
+    <aside class="sidebar" id="sidebar">
+      <div class="side-block">
+        <div class="side-head">
+          <span>Data files</span>
+          <button class="mini-btn" id="addFileBtn" data-icon="plus" title="Load .xlsx / .csv"></button>
+        </div>
+        <div class="file-list" id="fileList">
+          <div class="empty-note">Drop an .xlsx or .csv anywhere</div>
+        </div>
+      </div>
+
+      <div class="side-block grow" id="recordsBlock">
+        <div class="side-head">
+          <span>Records</span>
+          <span class="counter" id="navCounter">0 / 0</span>
+        </div>
+        <div class="nav-row">
+          <button class="mini-btn" id="prevBtn" data-icon="chevL"></button>
+          <button class="mini-btn" id="nextBtn" data-icon="chevR"></button>
+        </div>
+        <div class="row-list" id="rowList"></div>
+      </div>
+    </aside>
+
+    <!-- CANVAS -->
+    <div class="canvas-scroll" id="canvasScroll">
+      <div class="canvas-center" id="canvasCenter">
+        <div class="canvas-stage" id="canvasStage">
+          <div id="page"></div>
+        </div>
+      </div>
+      <div class="drop-hint" id="dropHint">Drop files or images here</div>
+    </div>
+
+    <!-- ZOOM -->
+    <div class="zoom-bar">
+      <button class="icon-btn sm" id="zoomOut" data-icon="zoomOut" title="Zoom out"></button>
+      <button class="zoom-value" id="zoomValue" title="Reset to 100%">100%</button>
+      <button class="icon-btn sm" id="zoomIn" data-icon="zoomIn" title="Zoom in"></button>
+      <span class="divider"></span>
+      <button class="icon-btn sm" id="zoomFit" data-icon="fit" title="Fit to screen"></button>
+    </div>
+  </div>
+</div>
+
+<!-- EXPORT MODAL -->
+<div class="modal-backdrop" id="modal">
+  <div class="modal">
+    <div class="modal-head">
+      <h3 id="modalTitle">Export PDF</h3>
+      <button class="icon-btn sm" id="modalClose" data-icon="x"></button>
+    </div>
+
+    <!-- step 1 -->
+    <div class="modal-body" id="modalSetup">
+      <p class="modal-note">
+        <span id="modalRows"></span> records will each become a PDF page,
+        sized <strong id="modalSize"></strong>.
+      </p>
+      <div class="field block">
+        <label for="pdfName">File name</label>
+        <input type="text" id="pdfName" placeholder="printgen-export">
+      </div>
+    </div>
+
+    <!-- step 2 -->
+    <div class="modal-body hidden" id="modalProgress">
+      <div class="bar"><div class="bar-fill" id="barFill"></div></div>
+      <div class="bar-label" id="barLabel">Preparing…</div>
+      <div class="console" id="exportLog"></div>
+    </div>
+
+    <div class="modal-foot">
+      <button class="btn ghost" id="modalCancel">Cancel</button>
+      <button class="btn primary" id="modalConfirm"><i data-icon="download"></i><span>Generate</span></button>
+    </div>
+  </div>
+</div>
+
+<input type="file" id="fileInput" accept=".xlsx,.xls,.csv" hidden multiple>
+<input type="file" id="imgInput" accept="image/*" hidden>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dom-to-image-more@3.4.1/dist/dom-to-image-more.min.js"></script>
+<script src="script.js"></script>
+</body>
+
+</html>
