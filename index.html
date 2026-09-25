@@ -1,4 +1,4 @@
-<!DOCTYPE html> <!-- V2.0 -->
+<!DOCTYPE html> <!-- v3 -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -6,7 +6,7 @@
 <title>Print-Gen</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&family=Amiri:wght@400;700&family=Cairo:wght@400;700&family=Lato:wght@400;700&family=Merriweather:wght@400;700&family=Montserrat:wght@400;700&family=Noto+Sans+Arabic:wght@400;700&family=Open+Sans:wght@400;700&family=Oswald:wght@400;700&family=Playfair+Display:wght@400;700&family=Poppins:wght@400;700&family=Roboto:wght@400;700&family=Roboto+Mono:wght@400;700&family=Tajawal:wght@400;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700;0,900;1,400;1,700&family=Roboto:ital,wght@0,300;0,400;0,500;0,700;0,900;1,400;1,700&family=Open+Sans:ital,wght@0,400;0,600;0,700;0,800;1,400;1,700&family=Lato:ital,wght@0,400;0,700;0,900;1,400;1,700&family=Montserrat:ital,wght@0,400;0,500;0,700;0,900;1,400;1,700&family=Poppins:ital,wght@0,400;0,500;0,700;0,900;1,400;1,700&family=Oswald:wght@400;500;700&family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400;1,700&family=Merriweather:ital,wght@0,400;0,700;0,900;1,400;1,700&family=Noto+Sans+Arabic:wght@400;700&family=Cairo:wght@400;600;700;900&family=Tajawal:wght@400;500;700;900&family=Amiri:wght@400;700&family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet">
 <script>
   (function () {
     try {
@@ -29,8 +29,8 @@
       <span class="brand-name">Print-Gen</span>
     </div>
     <div class="landing-top-actions">
-    <button class="icon-btn theme-btn" id="themeLanding" data-icon="moon" title="Toggle theme"></button>
-    <span class="pill-note">Works offline</span>
+      <button class="icon-btn theme-btn" id="themeLanding" data-icon="moon" title="Toggle theme"></button>
+      <span class="pill-note">Works offline</span>
     </div>
   </header>
 
@@ -41,7 +41,6 @@
          Nothing leaves your machine.</p>
     </section>
 
-    <!-- NEW CANVAS -->
     <section class="panel">
       <div class="panel-head">
         <h2>New canvas</h2>
@@ -75,7 +74,6 @@
       </div>
     </section>
 
-    <!-- TEMPLATES -->
     <section class="panel">
       <div class="panel-head">
         <h2>Saved templates</h2>
@@ -84,15 +82,15 @@
       <div id="templateList" class="template-list"></div>
     </section>
   </main>
-    <footer class="site-footer">
-         <span>&copy; <span id="year"></span> Archalian</span>
-    </footer>
+
+  <footer class="site-footer">
+    <span>&copy; <span id="year"></span> Archalian</span>
+  </footer>
 </div>
 
 <!-- EDITOR -->
 <div id="editor" class="screen">
 
-  <!-- TOP BAR -->
   <header class="topbar">
     <button class="icon-btn" id="backBtn" title="Back to start" data-icon="back"></button>
     <div class="brand-mini">Print-Gen</div>
@@ -100,7 +98,7 @@
     <div class="doc-badge" id="docBadge">—</div>
     <span class="divider"></span>
 
-    <button class="btn" id="addTextBtn"><i data-icon="text"></i><span>Field</span></button>
+    <button class="btn" id="addFieldBtn"><i data-icon="text"></i><span>Field</span></button>
     <button class="btn" id="addStaticBtn"><i data-icon="staticText"></i><span>Static</span></button>
     <button class="btn" id="addImageBtn"><i data-icon="image"></i><span>Image</span></button>
 
@@ -108,31 +106,21 @@
     <div class="col-strip" id="colStrip"></div>
 
     <div class="topbar-right">
-    <button class="icon-btn theme-btn" id="themeEditor" data-icon="moon" title="Toggle theme"></button>
-    <button class="btn" id="saveTplBtn"><i data-icon="save"></i><span>Save template</span></button>
-    <button class="btn primary" id="exportBtn"><i data-icon="download"></i><span>Export PDF</span></button>
+      <button class="icon-btn theme-btn" id="themeEditor" data-icon="moon" title="Toggle theme"></button>
+      <button class="btn" id="saveTplBtn"><i data-icon="save"></i><span>Save template</span></button>
+      <button class="btn primary" id="exportBtn"><i data-icon="download"></i><span>Export PDF</span></button>
     </div>
   </header>
 
-  <!-- STYLE BAR -->
   <div class="stylebar" id="stylebar">
-    <div class="sb-static" id="sbStatic">
-      <label>Static text</label>
-      <input type="text" id="staticInput" placeholder="Type your text…">
-      <span class="divider"></span>
-    </div>
-
     <div class="sb-group" id="sbText">
       <label>Font</label>
       <select id="fontSelect" class="sel-font"></select>
-
       <label>Color</label>
       <input type="color" id="textColor" value="#111111" class="swatch">
-
       <label>Outline</label>
       <input type="number" id="strokeW" value="0" min="0" max="40" step="0.5" class="num-xs" title="Outline thickness (px)">
       <input type="color" id="strokeColor" value="#000000" class="swatch" title="Outline color">
-
       <button class="tgl" id="boldBtn" data-icon="bold" title="Bold"></button>
       <button class="tgl" id="italicBtn" data-icon="italic" title="Italic"></button>
       <button class="tgl" id="alignBtn" data-icon="alignL" title="Alignment"></button>
@@ -149,12 +137,11 @@
 
     <span class="divider"></span>
     <button class="icon-btn sm danger" id="deleteBtn" data-icon="trash" title="Delete (Del)"></button>
+
+    <span class="style-hint">Double-click text to edit · Ctrl+C / V to copy-paste</span>
   </div>
 
-  <!-- MAIN -->
   <div class="main">
-
-    <!-- LEFT SIDEBAR -->
     <aside class="sidebar" id="sidebar">
       <div class="side-block">
         <div class="side-head">
@@ -179,7 +166,6 @@
       </div>
     </aside>
 
-    <!-- CANVAS -->
     <div class="canvas-scroll" id="canvasScroll">
       <div class="canvas-center" id="canvasCenter">
         <div class="canvas-stage" id="canvasStage">
@@ -189,7 +175,6 @@
       <div class="drop-hint" id="dropHint">Drop files or images here</div>
     </div>
 
-    <!-- ZOOM -->
     <div class="zoom-bar">
       <button class="icon-btn sm" id="zoomOut" data-icon="zoomOut" title="Zoom out"></button>
       <button class="zoom-value" id="zoomValue" title="Reset to 100%">100%</button>
@@ -208,7 +193,6 @@
       <button class="icon-btn sm" id="modalClose" data-icon="x"></button>
     </div>
 
-    <!-- step 1 -->
     <div class="modal-body" id="modalSetup">
       <p class="modal-note">
         <span id="modalRows"></span> records will each become a PDF page,
@@ -218,9 +202,16 @@
         <label for="pdfName">File name</label>
         <input type="text" id="pdfName" placeholder="printgen-export">
       </div>
+      <div class="field block">
+        <label for="pdfQuality">Quality</label>
+        <select id="pdfQuality">
+          <option value="1.5">Draft — fastest</option>
+          <option value="2" selected>Standard</option>
+          <option value="3">High quality — slower</option>
+        </select>
+      </div>
     </div>
 
-    <!-- step 2 -->
     <div class="modal-body hidden" id="modalProgress">
       <div class="bar"><div class="bar-fill" id="barFill"></div></div>
       <div class="bar-label" id="barLabel">Preparing…</div>
@@ -239,8 +230,6 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/dom-to-image-more@3.4.1/dist/dom-to-image-more.min.js"></script>
 <script src="script.js"></script>
 </body>
-
 </html>
