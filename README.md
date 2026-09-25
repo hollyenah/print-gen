@@ -1,5 +1,5 @@
 # Print-Gen
-
+![GitHub release (latest by date)](https://img.shields.io/github/v/release/hollyenah/print-gen?color=blue&label=version)
 > Design once. Generate hundreds.
 
 A lightweight, browser-based tool for batch-generating PDF pages from spreadsheets.
