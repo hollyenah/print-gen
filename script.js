@@ -850,13 +850,7 @@ async function runExport() {
 
     let dataUrl;
     try {
-      dataUrl = await domtoimage.toJpeg(el.page, {
-        quality: 0.94,
-        bgcolor: '#ffffff',
-        width: Math.round(state.doc.w * scale),
-        height: Math.round(state.doc.h * scale),
-        style: { boxShadow: 'none', transform: 'none' }
-      });
+      dataUrl = await rasterizePage(scale);
     } catch (err) {
       logLine(`<span class="dim">✕ row ${i + 1} failed — ${err.message}</span>`);
       continue;
@@ -902,6 +896,36 @@ async function runExport() {
   el.modalConfirm.querySelector('span').textContent = 'Close';
   el.modalConfirm.onclick = () => { el.modal.classList.remove('open'); resetModalConfirm(); };
   state.exporting = false;
+}
+
+/*
+   Rasterize the page at its true logical size (no zoom, no upscale games)
+ */
+async function rasterizePage(pixelRatio) {
+  const page = el.page;
+  const savedTransform = page.style.transform;
+  const savedOrigin = page.style.transformOrigin;
+
+  // Neutralize the editor zoom — the export must render at 1:1 logical size
+  page.style.transform = 'none';
+  page.style.transformOrigin = '0 0';
+
+  // Force a synchronous reflow so dom-to-image measures the un-zoomed box
+  void page.offsetWidth;
+
+  try {
+    return await domtoimage.toJpeg(page, {
+      quality: 0.94,
+      bgcolor: '#ffffff',
+      width: state.doc.w,
+      height: state.doc.h,
+      pixelRatio: pixelRatio,
+      style: { boxShadow: 'none' }
+    });
+  } finally {
+    page.style.transform = savedTransform;
+    page.style.transformOrigin = savedOrigin;
+  }
 }
 
 function resetModalConfirm() {
