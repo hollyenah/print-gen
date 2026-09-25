@@ -1,10 +1,10 @@
-/*
-   Print-Gen — application logic
- */
+/* ══════════════════════════════════════════════════════════
+   Print-Gen — application logic (rewrite)
+   ══════════════════════════════════════════════════════════ */
 (function () {
 'use strict';
 
-/*─ ICONS─ */
+/*─────────────────── ICONS ───────────────────*/
 const P = {
   plus:      '<path d="M12 5v14M5 12h14"/>',
   text:      '<path d="M5 6h14M12 6v13M9 19h6"/>',
@@ -30,9 +30,8 @@ const P = {
   down:      '<path d="M12 4v15m0 0-5-5m5 5 5-5"/>',
   back2:     '<path d="M4 20h16M12 4v11m0 0-5-5m5 5 5-5"/>',
   file:      '<path d="M14 3v5h5"/><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9l5 5v11a2 2 0 0 1-2 2Z"/>',
-  alert:     '<path d="M12 8v5M12 17h.01"/><circle cx="12" cy="12" r="9"/>',
-  sun:  '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>',
-  moon: '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>',
+  sun:       '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>',
+  moon:      '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>',
 };
 const svg = (n, c) =>
   `<svg class="ico ${c || ''}" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -44,20 +43,7 @@ function hydrateIcons(root) {
   });
 }
 
-function boot() {
-  hydrateIcons();
-  buildFontSelect();
-  renderPresets();
-  renderTemplates();
-  wireEvents();
-  resetModalConfirm();
-  applyTheme(currentTheme());
-
-  createDoc(794, 1123, 'A4 Portrait');
-  el.colStrip.innerHTML = '<span class="col-hint">Load a spreadsheet to see its columns</span>';
-}
-
-/*─ CONSTANTS─ */
+/*─────────────────── CONSTANTS ───────────────────*/
 const UNIT_PX = { px: 1, in: 96, cm: 96 / 2.54, mm: 96 / 25.4, pt: 96 / 72 };
 
 const PRESETS = [
@@ -71,18 +57,42 @@ const PRESETS = [
   { name: 'Square',       w: 1080, h: 1080, unit: 'px' }
 ];
 
-const FONTS = [
-  { g: 'Sans-serif', list: ['Inter', 'Arial', 'Helvetica', 'Segoe UI', 'Roboto', 'Open Sans', 'Lato', 'Montserrat', 'Poppins', 'Oswald', 'Tahoma', 'Trebuchet MS', 'Verdana'] },
-  { g: 'Serif',      list: ['Georgia', 'Times New Roman', 'Garamond', 'Playfair Display', 'Merriweather'] },
-  { g: 'Monospace',  list: ['Roboto Mono', 'Courier New', 'Consolas'] },
-  { g: 'Display',    list: ['Impact', 'Comic Sans MS'] },
-  { g: 'Arabic',     list: ['Noto Sans Arabic', 'Cairo', 'Tajawal', 'Amiri'] }
+/* Font catalog — every family declares the weights it actually ships.
+   Google = loaded from fonts.googleapis.com at <head>; System = OS fonts. */
+const FONT_FAMILIES = [
+  { family: 'Inter',           group: 'Sans-serif', weights: [400,500,600,700,900], italic: true },
+  { family: 'Roboto',          group: 'Sans-serif', weights: [300,400,500,700,900], italic: true },
+  { family: 'Open Sans',       group: 'Sans-serif', weights: [400,600,700,800],     italic: true },
+  { family: 'Lato',            group: 'Sans-serif', weights: [400,700,900],         italic: true },
+  { family: 'Montserrat',      group: 'Sans-serif', weights: [400,500,700,900],     italic: true },
+  { family: 'Poppins',         group: 'Sans-serif', weights: [400,500,700,900],     italic: true },
+  { family: 'Oswald',          group: 'Display',    weights: [400,500,700],         italic: false },
+  { family: 'Playfair Display',group: 'Serif',      weights: [400,700,900],         italic: true },
+  { family: 'Merriweather',    group: 'Serif',      weights: [400,700,900],         italic: true },
+  { family: 'Noto Sans Arabic',group: 'Arabic',     weights: [400,700],             italic: false },
+  { family: 'Cairo',           group: 'Arabic',     weights: [400,600,700,900],     italic: false },
+  { family: 'Tajawal',         group: 'Arabic',     weights: [400,500,700,900],     italic: false },
+  { family: 'Amiri',           group: 'Arabic',     weights: [400,700],             italic: false },
+  { family: 'Arial',           group: 'System',     weights: [400,700,900],         italic: true },
+  { family: 'Helvetica',       group: 'System',     weights: [400,700],             italic: true },
+  { family: 'Georgia',         group: 'System',     weights: [400,700],             italic: true },
+  { family: 'Times New Roman', group: 'System',     weights: [400,700],             italic: true },
+  { family: 'Courier New',     group: 'System',     weights: [400,700],             italic: true },
+  { family: 'Verdana',         group: 'System',     weights: [400,700],             italic: false },
+  { family: 'Impact',          group: 'System',     weights: [400],                 italic: false },
 ];
 
-const LS_KEY = 'printgen.templates.v1';
-const ARABIC_RE = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF\u0590-\u05FF]/;
+const WEIGHT_LABEL = {
+  300: 'Light', 400: 'Regular', 500: 'Medium',
+  600: 'SemiBold', 700: 'Bold', 800: 'ExtraBold', 900: 'Black'
+};
 
-/*─ STATE─ */
+const ARABIC_RE = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF\u0590-\u05FF]/;
+const LS_TPL   = 'printgen.templates.v2';
+const LS_THEME = 'printgen.theme';
+const LINE_H   = 1.15;
+
+/*─────────────────── STATE ───────────────────*/
 const state = {
   doc: { w: 794, h: 1123, name: 'A4 Portrait' },
   boxes: [],
@@ -90,21 +100,22 @@ const state = {
   activeFile: -1,
   row: 0,
   zoom: 1,
-  selected: null,
+  selectedId: null,
   zTop: 1,
   seq: 0,
+  clipboard: null,
   exporting: false,
-  cancelled: false
+  cancelled: false,
 };
 
-/*─ DOM─ */
+/*─────────────────── DOM ───────────────────*/
 const $ = s => document.querySelector(s);
 const el = {
   landing: $('#landing'), editor: $('#editor'),
   page: $('#page'), stage: $('#canvasStage'), scroll: $('#canvasScroll'),
   presetGrid: $('#presetGrid'), templateList: $('#templateList'), tplCount: $('#tplCount'),
   docBadge: $('#docBadge'), colStrip: $('#colStrip'), stylebar: $('#stylebar'),
-  sbText: $('#sbText'), sbStatic: $('#sbStatic'), staticInput: $('#staticInput'),
+  sbText: $('#sbText'),
   fontSelect: $('#fontSelect'), textColor: $('#textColor'),
   strokeW: $('#strokeW'), strokeColor: $('#strokeColor'),
   boldBtn: $('#boldBtn'), italicBtn: $('#italicBtn'), alignBtn: $('#alignBtn'),
@@ -113,14 +124,86 @@ const el = {
   zoomValue: $('#zoomValue'), dropHint: $('#dropHint'),
   modal: $('#modal'), modalTitle: $('#modalTitle'), modalSetup: $('#modalSetup'),
   modalProgress: $('#modalProgress'), modalRows: $('#modalRows'), modalSize: $('#modalSize'),
-  pdfName: $('#pdfName'), barFill: $('#barFill'), barLabel: $('#barLabel'),
+  pdfName: $('#pdfName'), pdfQuality: $('#pdfQuality'),
+  barFill: $('#barFill'), barLabel: $('#barLabel'),
   exportLog: $('#exportLog'), modalCancel: $('#modalCancel'),
   modalConfirm: $('#modalConfirm'), modalClose: $('#modalClose')
 };
 
-/*
-   LANDING
- */
+/*─────────────────── TEXT MEASUREMENT (offscreen canvas) ───────────────────*/
+const measure = document.createElement('canvas').getContext('2d');
+
+function fontString(b, size) {
+  const style = b.italic ? 'italic ' : '';
+  const weight = b.weight || 400;
+  return `${style}${weight} ${size}px "${b.family || 'Inter'}", sans-serif`;
+}
+
+function wrapText(ctx, text, maxW) {
+  const out = [];
+  for (const para of text.split('\n')) {
+    if (!para) { out.push(''); continue; }
+    const words = para.split(/\s+/).filter(Boolean);
+    let line = '';
+    for (const word of words) {
+      const test = line ? line + ' ' + word : word;
+      if (!line || ctx.measureText(test).width <= maxW) line = test;
+      else { out.push(line); line = word; }
+    }
+    if (line) out.push(line);
+  }
+  return out;
+}
+
+/* Find the largest font size where `text` fits inside (w × h). */
+function fitText(b, text) {
+  if (!text) { b._fitSize = 12; return 12; }
+  const W = b.w, H = b.h;
+  if (W <= 2 || H <= 2) { b._fitSize = 4; return 4; }
+
+  // Longest word = hard lower bound for the font size
+  const words = text.split(/\s+/).filter(Boolean);
+  let maxWordRatio = 0;
+  measure.font = fontString(b, 100);
+  for (const w of words) {
+    const r = measure.measureText(w).width;
+    if (r > maxWordRatio) maxWordRatio = r;
+  }
+  const hardCap = maxWordRatio > 0 ? Math.floor(100 * W / maxWordRatio) : 600;
+  const hi0 = Math.max(4, Math.min(600, hardCap));
+  const hCap = Math.max(4, Math.floor(H / LINE_H));
+
+  let lo = 4, hi = Math.min(hi0, hCap), best = 4;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    measure.font = fontString(b, mid);
+    const lines = wrapText(measure, text, W);
+    const height = lines.length * mid * LINE_H;
+    if (height <= H) { best = mid; lo = mid + 1; }
+    else hi = mid - 1;
+  }
+  b._fitSize = best;
+  return best;
+}
+
+/*─────────────────── THEME ───────────────────*/
+function currentTheme() {
+  return document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
+}
+function applyTheme(t) {
+  document.documentElement.dataset.theme = t;
+  try { localStorage.setItem(LS_THEME, t); } catch (e) {}
+  const icon = t === 'dark' ? 'sun' : 'moon';
+  document.querySelectorAll('.theme-btn').forEach(b => {
+    b.innerHTML = svg(icon);
+    b.title = t === 'dark' ? 'Switch to light mode' : 'Switch to dark mode';
+  });
+}
+function toggleTheme() {
+  applyTheme(currentTheme() === 'dark' ? 'light' : 'dark');
+}
+
+/*─────────────────── LANDING ───────────────────*/
 function renderPresets() {
   el.presetGrid.innerHTML = '';
   PRESETS.forEach(p => {
@@ -139,11 +222,11 @@ function renderPresets() {
 }
 
 function getTemplates() {
-  try { return JSON.parse(localStorage.getItem(LS_KEY) || '[]'); }
+  try { return JSON.parse(localStorage.getItem(LS_TPL) || '[]'); }
   catch { return []; }
 }
 function setTemplates(list) {
-  try { localStorage.setItem(LS_KEY, JSON.stringify(list)); }
+  try { localStorage.setItem(LS_TPL, JSON.stringify(list)); }
   catch { alert('Storage is full — remove an old template or use smaller images.'); }
 }
 
@@ -152,7 +235,7 @@ function renderTemplates() {
   el.tplCount.textContent = list.length ? `${list.length} saved` : '';
   el.templateList.innerHTML = '';
   if (!list.length) {
-    el.templateList.innerHTML = '<div class="empty-note">No templates yet. Build a layout and hit “Save template”.</div>';
+    el.templateList.innerHTML = '<div class="empty-note">No templates yet. Build a layout and hit "Save template".</div>';
     return;
   }
   list.forEach(t => {
@@ -162,13 +245,13 @@ function renderTemplates() {
       <div class="tpl-thumb"></div>
       <div class="tpl-meta">
         <div class="tpl-name"></div>
-        <div class="tpl-info">${Math.round(t.w)} × ${Math.round(t.h)} px · ${t.boxes.length} object${t.boxes.length !== 1 ? 's' : ''}${t.columns && t.columns.length ? ' · ' + t.columns.length + ' columns' : ''}</div>
+        <div class="tpl-info">${Math.round(t.w)} × ${Math.round(t.h)} px · ${t.boxes.length} object${t.boxes.length !== 1 ? 's' : ''}</div>
       </div>
       <button class="tpl-del" title="Delete">${svg('trash')}</button>`;
     item.querySelector('.tpl-name').textContent = t.name;
     item.querySelector('.tpl-del').onclick = e => {
       e.stopPropagation();
-      if (!confirm(`Delete template “${t.name}”?`)) return;
+      if (!confirm(`Delete template "${t.name}"?`)) return;
       setTemplates(getTemplates().filter(x => x.id !== t.id));
       renderTemplates();
     };
@@ -178,12 +261,13 @@ function renderTemplates() {
 }
 
 function createDoc(w, h, name) {
-  state.doc = { w: Math.round(w), h: Math.round(h), name: name || 'Custom' };
+  // Wipe everything
   state.boxes.forEach(b => b.el && b.el.remove());
   state.boxes = [];
-  state.selected = null;
+  state.selectedId = null;
   state.zTop = 1;
-  el.page.style.width = state.doc.w + 'px';
+  state.doc = { w: Math.round(w), h: Math.round(h), name: name || 'Custom' };
+  el.page.style.width  = state.doc.w + 'px';
   el.page.style.height = state.doc.h + 'px';
   el.docBadge.textContent = `${state.doc.name} · ${state.doc.w} × ${state.doc.h} px`;
   updateStageSize();
@@ -194,7 +278,7 @@ function openEditor(w, h, name, skipReset) {
   if (!skipReset) createDoc(w, h, name);
   el.landing.classList.remove('active');
   el.editor.classList.add('active');
-  requestAnimationFrame(() => { fitZoom(); });
+  requestAnimationFrame(fitZoom);
 }
 
 function goLanding() {
@@ -204,9 +288,7 @@ function goLanding() {
   renderTemplates();
 }
 
-/*
-   ZOOM
- */
+/*─────────────────── ZOOM ───────────────────*/
 function updateStageSize() {
   el.stage.style.width  = (state.doc.w * state.zoom) + 'px';
   el.stage.style.height = (state.doc.h * state.zoom) + 'px';
@@ -222,7 +304,6 @@ function setZoom(z, anchor) {
   if (Math.abs(z - old) < 0.0001) return;
   state.zoom = z;
   updateStageSize();
-
   if (anchor) {
     const r = el.scroll.getBoundingClientRect();
     const cx = anchor.x - r.left + el.scroll.scrollLeft;
@@ -243,151 +324,133 @@ function fitZoom() {
   el.scroll.scrollTop  = (el.scroll.scrollHeight - r.height) / 2;
 }
 
-/*
-   TEXT MEASUREMENT
- */
-let wrapProbe = null, wordProbe = null;
-
-function ensureProbes() {
-  if (wrapProbe) return;
-  wrapProbe = document.createElement('div');
-  wrapProbe.style.cssText =
-    'position:absolute;left:-99999px;top:0;visibility:hidden;pointer-events:none;' +
-    'white-space:pre-wrap;overflow-wrap:normal;word-break:normal;line-height:1.15;';
-  document.body.appendChild(wrapProbe);
-
-  wordProbe = document.createElement('div');
-  wordProbe.style.cssText =
-    'position:absolute;left:-99999px;top:0;visibility:hidden;pointer-events:none;white-space:nowrap;';
-  document.body.appendChild(wordProbe);
-}
-
-function fontCss(b) {
-  return `font-family:${b.font};font-weight:${b.bold ? 700 : 400};font-style:${b.italic ? 'italic' : 'normal'};`;
-}
-
-function fitText(b) {
-  const t = b.textEl;
-  const text = t.textContent;
-  const W = b.w, H = b.h;
-  if (!text || W <= 2 || H <= 2) return;
-
-  ensureProbes();
-  const base = fontCss(b);
-
-  wordProbe.style.cssText =
-    'position:absolute;left:-99999px;top:0;visibility:hidden;pointer-events:none;' +
-    'white-space:nowrap;font-size:100px;' + base;
-
-  const words = text.split(/\s+/).filter(Boolean);
-  let maxWord = 0;
-  for (const w of words) {
-    wordProbe.textContent = w;
-    const ww = wordProbe.offsetWidth;
-    if (ww > maxWord) maxWord = ww;
-    if (maxWord * W / 100 > 1500) break;
-  }
-  let hi = maxWord > 0 ? Math.floor(100 * W / maxWord) : 1500;
-  hi = Math.max(1, Math.min(hi, 1500));
-
-  wrapProbe.style.cssText =
-    'position:absolute;left:-99999px;top:0;visibility:hidden;pointer-events:none;' +
-    `white-space:pre-wrap;overflow-wrap:normal;word-break:normal;line-height:1.15;width:${W}px;` + base;
-  wrapProbe.textContent = text;
-
-  let lo = 1, best = 1;
-  while (lo <= hi) {
-    const mid = (lo + hi) >> 1;
-    wrapProbe.style.fontSize = mid + 'px';
-    if (wrapProbe.offsetHeight <= H) { best = mid; lo = mid + 1; }
-    else hi = mid - 1;
-  }
-  t.style.fontSize = best + 'px';
-  b.fontSize = best;
-}
-
-function fitAll() { state.boxes.forEach(b => b.type === 'text' && fitText(b)); }
-
-/*
-   BOXES
- */
-function newBox(partial) {
+/*─────────────────── BOX MODEL ───────────────────*/
+function newTextBox(partial) {
   return Object.assign({
     id: 'b' + (++state.seq),
     type: 'text',
-    x: 60, y: 60, w: 300, h: 90,
+    x: 60, y: 60, w: 320, h: 100,
     z: ++state.zTop,
     colKey: null,
-    staticText: null,
-    font: 'Arial',
-    color: '#111111',
-    bold: false,
+    staticText: '',
+    family: 'Inter',
+    weight: 400,
     italic: false,
+    color: '#111111',
     align: 'left',
     strokeW: 0,
-    strokeColor: '#000000',
-    src: null
+    strokeColor: '#000000'
   }, partial || {});
 }
 
-function createBoxEl(b) {
-  const box = document.createElement('div');
-  box.className = 'obj';
-  box.dataset.id = b.id;
+function newImageBox(src, partial) {
+  return Object.assign({
+    id: 'b' + (++state.seq),
+    type: 'image',
+    x: 60, y: 60, w: 300, h: 300,
+    z: ++state.zTop,
+    src: src
+  }, partial || {});
+}
+
+function getBox(id) { return state.boxes.find(b => b.id === id); }
+function getSelected() { return state.selectedId ? getBox(state.selectedId) : null; }
+
+/* Resolve the visible text of a text box for the current row. */
+function textFor(b) {
+  if (b.type !== 'text') return '';
+  if (b.colKey && state.files[state.activeFile]) {
+    const row = state.files[state.activeFile].rows[state.row] || {};
+    const v = row[b.colKey];
+    return v == null ? '' : String(v);
+  }
+  return b.staticText || '';
+}
+
+/*─────────────────── DOM RENDERING ───────────────────*/
+function renderBox(b) {
+  const div = document.createElement('div');
+  div.className = 'pg-obj';
+  div.dataset.box = b.id;
+  div.style.zIndex = b.z;
+  div.style.left = b.x + 'px';
+  div.style.top  = b.y + 'px';
+  div.style.width  = b.w + 'px';
+  div.style.height = b.h + 'px';
 
   if (b.type === 'text') {
     const t = document.createElement('div');
-    t.className = 'obj-text';
-    box.appendChild(t);
+    t.className = 'pg-obj-text';
+    t.contentEditable = 'false';
+    t.spellcheck = false;
+    div.appendChild(t);
     b.textEl = t;
   } else {
     const img = document.createElement('img');
     img.draggable = false;
     img.src = b.src;
-    box.appendChild(img);
+    div.appendChild(img);
     b.imgEl = img;
   }
 
   const handles = document.createElement('div');
-  handles.className = 'handles';
-  ['nw', 'n', 'ne', 'w', 'e', 'sw', 's', 'se'].forEach(d => {
+  handles.className = 'pg-handles';
+  for (const d of ['nw','n','ne','w','e','sw','s','se']) {
     const h = document.createElement('div');
-    h.className = 'handle h-' + d;
+    h.className = 'pg-handle h-' + d;
     h.dataset.dir = d;
     handles.appendChild(h);
-  });
-  box.appendChild(handles);
+  }
+  div.appendChild(handles);
 
   const del = document.createElement('button');
-  del.className = 'obj-del';
+  del.className = 'pg-del';
   del.innerHTML = svg('x');
-  del.onmousedown = e => { e.stopPropagation(); e.preventDefault(); removeBox(b); };
-  box.appendChild(del);
+  div.appendChild(del);
 
-  b.el = box;
-  b.handlesEl = handles;
-  return box;
+  b.el = div;
+  el.page.appendChild(div);
+
+  wireBox(b);
+  if (b.type === 'text') updateTextDom(b);
+  return div;
 }
 
-function applyGeom(b) {
+function updateBoxDom(b) {
+  if (!b.el) return;
   const s = b.el.style;
-  s.left = b.x + 'px';
-  s.top = b.y + 'px';
-  s.width = b.w + 'px';
+  s.left   = b.x + 'px';
+  s.top    = b.y + 'px';
+  s.width  = b.w + 'px';
   s.height = b.h + 'px';
   s.zIndex = b.z;
 }
 
-function applyTextStyle(b) {
-  if (b.type !== 'text') return;
+function updateTextDom(b) {
+  if (b.type !== 'text' || !b.textEl) return;
   const t = b.textEl;
-  const rtl = ARABIC_RE.test(t.textContent);
-  t.style.fontFamily = b.font;
-  t.style.color = b.color;
-  t.style.fontWeight = b.bold ? '700' : '400';
-  t.style.fontStyle = b.italic ? 'italic' : 'normal';
-  t.style.direction = rtl ? 'rtl' : 'ltr';
-  t.style.textAlign = b.align;
+  const text = textFor(b);
+  const size = fitText(b, text);
+  const rtl = ARABIC_RE.test(text);
+
+  let align = b.align;
+  if (rtl) {
+    if (align === 'left')  align = 'right';
+    else if (align === 'right') align = 'left';
+  }
+
+  if (t.textContent !== text) t.textContent = text;
+  t.style.fontFamily = `"${b.family}", sans-serif`;
+  t.style.fontWeight = String(b.weight);
+  t.style.fontStyle  = b.italic ? 'italic' : 'normal';
+  t.style.fontSize   = size + 'px';
+  t.style.color      = b.color;
+  t.style.direction  = rtl ? 'rtl' : 'ltr';
+  t.style.justifyContent = align === 'left'  ? 'flex-start'
+                          : align === 'right' ? 'flex-end'
+                          : 'center';
+  t.style.textAlign = align;
+
   if (b.strokeW > 0) {
     t.style.webkitTextStroke = b.strokeW + 'px ' + b.strokeColor;
     t.style.paintOrder = 'stroke fill';
@@ -397,49 +460,69 @@ function applyTextStyle(b) {
   }
 }
 
-function refreshText(b) {
-  if (b.type !== 'text') return;
-  let v = '';
-  if (b.staticText !== null) v = b.staticText;
-  else if (b.colKey && state.files[state.activeFile]) {
-    const row = state.files[state.activeFile].rows[state.row] || {};
-    if (row[b.colKey] !== undefined && row[b.colKey] !== null) v = String(row[b.colKey]);
+/*─────────────────── SELECTION ───────────────────*/
+function selectBox(b) {
+  const id = b ? b.id : null;
+  if (state.selectedId === id) return;
+  if (state.selectedId) {
+    const prev = getBox(state.selectedId);
+    if (prev && prev.el) prev.el.classList.remove('selected');
   }
-  if (b.textEl.textContent !== v) b.textEl.textContent = v;
-  applyTextStyle(b);
-  fitText(b);
+  state.selectedId = id;
+  if (!b) { hideStylebar(); return; }
+  b.el.classList.add('selected');
+  showStylebar(b);
 }
 
-function addBox(b, select) {
-  state.boxes.push(b);
-  el.page.appendChild(createBoxEl(b));
-  applyGeom(b);
-  if (b.type === 'text') refreshText(b);
-  wireBox(b);
-  if (select !== false) selectBox(b);
-  return b;
+function deselect() { selectBox(null); }
+
+function showStylebar(b) {
+  el.stylebar.classList.add('visible');
+  if (b.type === 'image') {
+    el.sbText.style.display = 'none';
+    return;
+  }
+  el.sbText.style.display = 'flex';
+  el.fontSelect.value = `${b.family}|${b.weight}|${b.italic ? 'italic' : 'normal'}`;
+  el.textColor.value  = b.color;
+  el.strokeW.value    = b.strokeW;
+  el.strokeColor.value = b.strokeColor;
+  el.boldBtn.classList.toggle('on', b.weight >= 700);
+  el.italicBtn.classList.toggle('on', b.italic);
+  el.alignBtn.innerHTML = svg({left:'alignL', center:'alignC', right:'alignR'}[b.align]);
 }
 
-function removeBox(b) {
-  b.el.remove();
-  const i = state.boxes.indexOf(b);
-  if (i > -1) state.boxes.splice(i, 1);
-  if (state.selected === b) deselect();
-}
+function hideStylebar() { el.stylebar.classList.remove('visible'); }
 
+/*─────────────────── INTERACTION ───────────────────*/
 function wireBox(b) {
   b.el.addEventListener('mousedown', e => {
-    if (e.target.classList.contains('handle')) return;
-    if (e.target.classList.contains('obj-del')) return;
+    if (e.target.classList.contains('pg-handle')) return;
+    if (e.target.classList.contains('pg-del')) return;
+    if (b.editing) return;                       // contenteditable mode
+    if (e.button !== 0) return;
     e.preventDefault();
     selectBox(b);
     startDrag(e, b);
   });
-  b.handlesEl.querySelectorAll('.handle').forEach(h => {
+
+  b.el.addEventListener('dblclick', e => {
+    if (b.type !== 'text') return;
+    if (b.colKey) return;                        // bound fields: not editable
+    e.preventDefault();
+    enterEditMode(b);
+  });
+
+  b.el.querySelectorAll('.pg-handle').forEach(h => {
     h.addEventListener('mousedown', e => {
       e.preventDefault(); e.stopPropagation();
       startResize(e, b, h.dataset.dir);
     });
+  });
+
+  b.el.querySelector('.pg-del').addEventListener('mousedown', e => {
+    e.stopPropagation(); e.preventDefault();
+    removeBox(b);
   });
 }
 
@@ -447,8 +530,8 @@ function startDrag(e, b) {
   const sx = e.clientX, sy = e.clientY;
   const ox = b.x, oy = b.y, z = state.zoom;
   const move = ev => {
-    b.x = ox + (ev.clientX - sx) / z;
-    b.y = oy + (ev.clientY - sy) / z;
+    b.x = Math.round(ox + (ev.clientX - sx) / z);
+    b.y = Math.round(oy + (ev.clientY - sy) / z);
     b.el.style.left = b.x + 'px';
     b.el.style.top  = b.y + 'px';
   };
@@ -463,23 +546,37 @@ function startDrag(e, b) {
 function startResize(e, b, dir) {
   const sx = e.clientX, sy = e.clientY;
   const ox = b.x, oy = b.y, ow = b.w, oh = b.h, z = state.zoom;
+  // Aspect ratio lock: default on for images, off for text.
+  // Hold Shift to invert.
+  const wantsLock = b.type === 'image' ? !e.shiftKey : e.shiftKey;
+  const isCorner = dir === 'nw' || dir === 'ne' || dir === 'sw' || dir === 'se';
+  const lock = wantsLock && isCorner;
+  const ratio = ow / oh;
 
   const move = ev => {
     const dx = (ev.clientX - sx) / z;
     const dy = (ev.clientY - sy) / z;
     let x = ox, y = oy, w = ow, h = oh;
 
-    if (dir.includes('e')) w = Math.max(24, ow + dx);
+    if (dir.includes('e')) w = Math.max(20, ow + dx);
     if (dir.includes('s')) h = Math.max(16, oh + dy);
-    if (dir.includes('w')) { w = Math.max(24, ow - dx); x = ox + (ow - w); }
+    if (dir.includes('w')) { w = Math.max(20, ow - dx); x = ox + (ow - w); }
     if (dir.includes('n')) { h = Math.max(16, oh - dy); y = oy + (oh - h); }
 
-    b.x = x; b.y = y; b.w = w; b.h = h;
-    b.el.style.left = x + 'px';
-    b.el.style.top = y + 'px';
-    b.el.style.width = w + 'px';
-    b.el.style.height = h + 'px';
-    if (b.type === 'text') fitText(b);
+    if (lock) {
+      if (Math.abs(w - ow) > Math.abs(h - oh)) h = w / ratio;
+      else w = h * ratio;
+      if (dir.includes('w')) x = ox + (ow - w);
+      if (dir.includes('n')) y = oy + (oh - h);
+    }
+
+    b.x = Math.round(x); b.y = Math.round(y);
+    b.w = Math.round(w); b.h = Math.round(h);
+    b.el.style.left   = b.x + 'px';
+    b.el.style.top    = b.y + 'px';
+    b.el.style.width  = b.w + 'px';
+    b.el.style.height = b.h + 'px';
+    if (b.type === 'text') updateTextDom(b);
   };
   const up = () => {
     document.removeEventListener('mousemove', move);
@@ -489,50 +586,169 @@ function startResize(e, b, dir) {
   document.addEventListener('mouseup', up);
 }
 
-/*
-   SELECTION
- */
-function selectBox(b) {
-  if (state.selected === b) return;
-  if (state.selected) state.selected.el.classList.remove('selected');
-  state.selected = b;
+/*─────────────────── INLINE EDIT ───────────────────*/
+function enterEditMode(b) {
+  if (b.type !== 'text' || b.colKey || b.editing) return;
+  b.editing = true;
+  b.el.classList.add('editing');
+  const t = b.textEl;
+  t.contentEditable = 'true';
 
-  if (!b) { hideStylebar(); return; }
-  b.el.classList.add('selected');
-  showStylebar(b);
+  // Move caret at end + select all so first keystroke replaces
+  requestAnimationFrame(() => {
+    t.focus();
+    const range = document.createRange();
+    range.selectNodeContents(t);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+  });
+
+  const onInput = () => {
+    b.staticText = t.textContent || '';
+    updateTextDom(b);
+  };
+  t.addEventListener('input', onInput);
+
+  // Escape to exit
+  const onKey = ev => {
+    if (ev.key === 'Escape') { ev.preventDefault(); exitEditMode(b); }
+  };
+  t.addEventListener('keydown', onKey);
+
+  b._editCleanup = () => {
+    t.removeEventListener('input', onInput);
+    t.removeEventListener('keydown', onKey);
+  };
 }
 
-function deselect() { selectBox(null); }
-
-function showStylebar(b) {
-  el.stylebar.classList.add('visible');
-  if (b.type === 'image') {
-    el.sbText.style.display = 'none';
-    el.sbStatic.classList.remove('visible');
+function exitEditMode(b) {
+  if (!b || !b.editing) return;
+  b.editing = false;
+  b.el.classList.remove('editing');
+  const t = b.textEl;
+  b.staticText = t.textContent || '';
+  t.contentEditable = 'false';
+  b._editCleanup && b._editCleanup();
+  b._editCleanup = null;
+  // Empty static box? Auto-remove so we don't leave orphans behind.
+  if (!b.colKey && !b.staticText.trim()) {
+    removeBox(b);
     return;
   }
-  el.sbText.style.display = 'flex';
-  if (b.staticText !== null) {
-    el.sbStatic.classList.add('visible');
-    el.staticInput.value = b.staticText;
-  } else {
-    el.sbStatic.classList.remove('visible');
-  }
-  el.fontSelect.value = b.font;
-  el.textColor.value = b.color;
-  el.strokeW.value = b.strokeW;
-  el.strokeColor.value = b.strokeColor;
-  el.boldBtn.classList.toggle('on', b.bold);
-  el.italicBtn.classList.toggle('on', b.italic);
-  const ai = { left: 'alignL', center: 'alignC', right: 'alignR' }[b.align];
-  el.alignBtn.innerHTML = svg(ai);
+  updateTextDom(b);
 }
 
-function hideStylebar() { el.stylebar.classList.remove('visible'); }
+/*─────────────────── CLIPBOARD ───────────────────*/
+function cloneBoxData(b) {
+  const o = {};
+  for (const k in b) {
+    if (k === 'el' || k === 'textEl' || k === 'imgEl' || k === '_img' ||
+        k === '_editCleanup' || k === '_fitSize' || k === 'editing') continue;
+    o[k] = b[k];
+  }
+  return o;
+}
 
-/*
-   FILES & DATA
- */
+function copySelected() {
+  const b = getSelected();
+  if (!b) return;
+  state.clipboard = cloneBoxData(b);
+  toast('Copied');
+}
+function pasteClipboard() {
+  if (!state.clipboard) return;
+  const data = Object.assign({}, state.clipboard);
+  const b = data.type === 'image'
+    ? newImageBox(data.src, data)
+    : newTextBox(data);
+  b.x += 24; b.y += 24;
+  b.z = ++state.zTop;
+  if (b.type === 'image') {
+    const img = new Image();
+    img.onload = () => { b._img = img; };
+    img.src = b.src;
+  }
+  state.boxes.push(b);
+  renderBox(b);
+  selectBox(b);
+  toast('Pasted');
+}
+function cutSelected() {
+  const b = getSelected();
+  if (!b) return;
+  copySelected();
+  removeBox(b);
+}
+function duplicateSelected() {
+  const b = getSelected();
+  if (!b) return;
+  const data = cloneBoxData(b);
+  const copy = data.type === 'image'
+    ? newImageBox(data.src, data)
+    : newTextBox(data);
+  copy.x = b.x + 20; copy.y = b.y + 20;
+  copy.z = ++state.zTop;
+  if (copy.type === 'image') {
+    const img = new Image();
+    img.onload = () => { copy._img = img; };
+    img.src = copy.src;
+  }
+  state.boxes.push(copy);
+  renderBox(copy);
+  selectBox(copy);
+}
+
+/*─────────────────── ADD / REMOVE ───────────────────*/
+function addFieldBox(colKey) {
+  const b = newTextBox({ colKey: colKey || null, staticText: colKey ? null : '' });
+  state.boxes.push(b);
+  renderBox(b);
+  selectBox(b);
+  return b;
+}
+
+function addStaticBox() {
+  const b = newTextBox();
+  state.boxes.push(b);
+  renderBox(b);
+  selectBox(b);
+  // Enter edit mode straight away
+  requestAnimationFrame(() => enterEditMode(b));
+  return b;
+}
+
+function addImageFromSrc(src) {
+  const img = new Image();
+  img.onload = () => {
+    const natW = img.naturalWidth  || 300;
+    const natH = img.naturalHeight || 300;
+    const maxW = state.doc.w * 0.5;
+    const maxH = state.doc.h * 0.5;
+    const k = Math.min(maxW / natW, maxH / natH, 1);
+    const w = Math.round(natW * k);
+    const h = Math.round(natH * k);
+    const b = newImageBox(src, {
+      x: Math.round((state.doc.w - w) / 2),
+      y: Math.round((state.doc.h - h) / 2),
+      w, h
+    });
+    b._img = img;
+    state.boxes.push(b);
+    renderBox(b);
+    selectBox(b);
+  };
+  img.src = src;
+}
+
+function removeBox(b) {
+  if (b.el) b.el.remove();
+  const i = state.boxes.indexOf(b);
+  if (i > -1) state.boxes.splice(i, 1);
+  if (state.selectedId === b.id) { state.selectedId = null; hideStylebar(); }
+}
+
+/*─────────────────── FILES & DATA ───────────────────*/
 function readDataFile(file) {
   return new Promise((resolve, reject) => {
     const r = new FileReader();
@@ -549,23 +765,29 @@ function readDataFile(file) {
   });
 }
 
+function readAsDataURL(file) {
+  return new Promise(res => {
+    const r = new FileReader();
+    r.onload = e => res(e.target.result);
+    r.readAsDataURL(file);
+  });
+}
+
 async function ingestFiles(fileList) {
   const arr = Array.from(fileList || []);
   let firstNew = -1;
   for (const f of arr) {
     if (f.type.startsWith('image/')) {
-      const src = await readAsDataURL(f);
-      addImageAtCenter(src);
+      addImageFromSrc(await readAsDataURL(f));
       continue;
     }
-    const ok = /\.(xlsx|xls|csv)$/i.test(f.name);
-    if (!ok) continue;
+    if (!/\.(xlsx|xls|csv)$/i.test(f.name)) continue;
     try {
       const data = await readDataFile(f);
       state.files.push(data);
       if (firstNew < 0) firstNew = state.files.length - 1;
     } catch (err) {
-      alert(`Could not read “${f.name}”: ${err.message}`);
+      alert(`Could not read "${f.name}": ${err.message}`);
     }
   }
   if (state.files.length) {
@@ -573,14 +795,6 @@ async function ingestFiles(fileList) {
     if (firstNew >= 0) switchFile(firstNew);
     else buildColumns();
   }
-}
-
-function readAsDataURL(file) {
-  return new Promise(res => {
-    const r = new FileReader();
-    r.onload = e => res(e.target.result);
-    r.readAsDataURL(file);
-  });
 }
 
 function buildFileList() {
@@ -610,7 +824,7 @@ function switchFile(i) {
   buildFileList();
   buildColumns();
   buildRows();
-  refreshAll();
+  refreshAllText();
 }
 
 function removeFile(i) {
@@ -621,7 +835,7 @@ function removeFile(i) {
     el.rowList.innerHTML = '';
     el.navCounter.textContent = '0 / 0';
     buildFileList();
-    refreshAll();
+    refreshAllText();
     return;
   }
   switchFile(Math.min(i, state.files.length - 1));
@@ -639,29 +853,25 @@ function buildColumns() {
     b.className = 'col-pill';
     b.textContent = c;
     b.title = 'Bind to selected field — or create a new one';
-    b.onclick = () => assignColumn(c);
+    b.onclick = () => {
+      const sel = getSelected();
+      if (sel && sel.type === 'text') {
+        sel.colKey = c;
+        sel.staticText = null;
+        updateTextDom(sel);
+        showStylebar(sel);
+      } else {
+        addFieldBox(c);
+      }
+    };
     el.colStrip.appendChild(b);
   });
-}
-
-function assignColumn(col) {
-  const sel = state.selected;
-  if (sel && sel.type === 'text') {
-    sel.staticText = null;
-    sel.colKey = col;
-    refreshText(sel);
-    showStylebar(sel);
-    return;
-  }
-  const b = addBox(newBox({ colKey: col }));
-  showStylebar(b);
 }
 
 function buildRows() {
   el.rowList.innerHTML = '';
   const f = state.files[state.activeFile];
   if (!f) { el.navCounter.textContent = '0 / 0'; return; }
-
   const frag = document.createDocumentFragment();
   f.rows.forEach((row, i) => {
     const d = document.createElement('div');
@@ -685,7 +895,7 @@ function goRow(i) {
   const act = el.rowList.querySelector('.row-item.active');
   if (act) act.scrollIntoView({ block: 'nearest' });
   updateCounter();
-  refreshAll();
+  refreshAllText();
 }
 
 function updateCounter() {
@@ -693,38 +903,14 @@ function updateCounter() {
   el.navCounter.textContent = f ? `${state.row + 1} / ${f.rows.length}` : '0 / 0';
 }
 
-function refreshAll() {
-  state.boxes.forEach(b => { if (b.type === 'text') refreshText(b); });
+function refreshAllText() {
+  // Only re-fit text for field-bound boxes; static text doesn't change.
+  for (const b of state.boxes) {
+    if (b.type === 'text') updateTextDom(b);
+  }
 }
 
-/*
-   IMAGES
- */
-function addImageAtCenter(src) {
-  const w = Math.min(300, state.doc.w * 0.35);
-  const h = w;
-  addBox(newBox({
-    type: 'image', src,
-    x: Math.round((state.doc.w - w) / 2),
-    y: Math.round((state.doc.h - h) / 2),
-    w, h
-  }));
-}
-
-/*
-   TEMPLATES
- */
-function serializeBoxes() {
-  return state.boxes.map(b => ({
-    type: b.type,
-    x: b.x, y: b.y, w: b.w, h: b.h, z: b.z,
-    colKey: b.colKey, staticText: b.staticText,
-    font: b.font, color: b.color, bold: b.bold, italic: b.italic,
-    align: b.align, strokeW: b.strokeW, strokeColor: b.strokeColor,
-    src: b.type === 'image' ? b.src : undefined
-  }));
-}
-
+/*─────────────────── TEMPLATES ───────────────────*/
 function saveTemplate() {
   const f = state.files[state.activeFile];
   const suggested = state.doc.name !== 'Custom' ? state.doc.name : 'My template';
@@ -732,10 +918,11 @@ function saveTemplate() {
   if (name === null) return;
   const tpl = {
     id: 't' + Date.now(),
-    name: (name.trim() || 'Untitled'),
-    w: state.doc.w, h: state.doc.h, docName: state.doc.name,
+    name: name.trim() || 'Untitled',
+    w: state.doc.w, h: state.doc.h,
+    docName: state.doc.name,
     columns: f ? f.columns.slice() : [],
-    boxes: serializeBoxes(),
+    boxes: state.boxes.map(cloneBoxData),
     createdAt: Date.now()
   };
   const list = getTemplates();
@@ -749,19 +936,103 @@ function loadTemplate(t) {
   createDoc(t.w, t.h, t.docName || t.name);
   openEditor(t.w, t.h, t.docName || t.name, true);
   requestAnimationFrame(() => {
-    t.boxes.forEach(bd => {
-      const b = newBox(bd);
-      b.z = bd.z; state.zTop = Math.max(state.zTop, bd.z);
-      addBox(b, false);
-    });
-    state.zTop = Math.max(state.zTop, t.boxes.length + 1);
-    fitAll();
+    for (const bd of t.boxes) {
+      const b = bd.type === 'image'
+        ? newImageBox(bd.src, bd)
+        : newTextBox(bd);
+      b.z = bd.z;
+      state.zTop = Math.max(state.zTop, bd.z);
+      if (b.type === 'image') {
+        const img = new Image();
+        img.onload = () => { b._img = img; };
+        img.src = b.src;
+      }
+      state.boxes.push(b);
+      renderBox(b);
+    }
   });
 }
 
-/*
-   EXPORT
- */
+/*─────────────────── EXPORT (Canvas 2D — fast) ───────────────────*/
+function drawTextBox(ctx, b, text) {
+  if (!text) return;
+  const size = b._fitSize || fitText(b, text);
+  ctx.font = fontString(b, size);
+
+  const rtl = ARABIC_RE.test(text);
+  ctx.direction = rtl ? 'rtl' : 'ltr';
+
+  let align = b.align;
+  if (rtl) {
+    if (align === 'left')  align = 'right';
+    else if (align === 'right') align = 'left';
+  }
+  ctx.textAlign = align === 'left' ? 'left' : align === 'right' ? 'right' : 'center';
+  ctx.textBaseline = 'top';
+
+  const lines = wrapText(ctx, text, b.w);
+  const lineH = size * LINE_H;
+  const totalH = lines.length * lineH;
+  let y = b.y + (b.h - totalH) / 2;
+  const x = align === 'left'  ? b.x
+          : align === 'right' ? b.x + b.w
+          : b.x + b.w / 2;
+
+  if (b.strokeW > 0) {
+    ctx.lineWidth = b.strokeW * 2;
+    ctx.strokeStyle = b.strokeColor;
+    ctx.lineJoin = 'round';
+    ctx.miterLimit = 2;
+  }
+  ctx.fillStyle = b.color;
+
+  for (const line of lines) {
+    if (b.strokeW > 0) ctx.strokeText(line, x, y);
+    ctx.fillText(line, x, y);
+    y += lineH;
+  }
+}
+
+function drawImageBox(ctx, b) {
+  const img = b._img;
+  if (!img || !img.complete || !img.naturalWidth) return;
+  ctx.drawImage(img, b.x, b.y, b.w, b.h);
+}
+
+async function preloadAllImages() {
+  const promises = [];
+  for (const b of state.boxes) {
+    if (b.type === 'image' && !b._img) {
+      promises.push(new Promise(res => {
+        const img = new Image();
+        img.onload = () => { b._img = img; res(); };
+        img.onerror = () => res();
+        img.src = b.src;
+      }));
+    }
+  }
+  return Promise.all(promises);
+}
+
+function rasterizeRow(scale) {
+  const canvas = document.createElement('canvas');
+  canvas.width  = Math.max(1, Math.round(state.doc.w * scale));
+  canvas.height = Math.max(1, Math.round(state.doc.h * scale));
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.scale(scale, scale);
+
+  // z-order
+  const sorted = state.boxes.slice().sort((a, b) => a.z - b.z);
+  for (const b of sorted) {
+    if (b.type === 'image') drawImageBox(ctx, b);
+    else drawTextBox(ctx, b, textFor(b));
+  }
+  return canvas.toDataURL('image/jpeg', 0.92);
+}
+
+/*─────────────────── EXPORT MODAL ───────────────────*/
 function logLine(html) {
   const d = document.createElement('div');
   d.className = 'console-line';
@@ -769,6 +1040,10 @@ function logLine(html) {
   el.exportLog.appendChild(d);
   while (el.exportLog.children.length > 400) el.exportLog.removeChild(el.exportLog.firstChild);
   el.exportLog.scrollTop = el.exportLog.scrollHeight;
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]));
 }
 
 function openExportModal() {
@@ -796,6 +1071,13 @@ function closeModal() {
   el.modal.classList.remove('open');
 }
 
+function resetModalConfirm() {
+  el.modalConfirm.onclick = runExport;
+  el.modalConfirm.querySelector('span').textContent = 'Generate';
+  el.modalCancel.textContent = 'Cancel';
+  el.modalConfirm.classList.remove('hidden');
+}
+
 async function runExport() {
   const f = state.files[state.activeFile];
   if (!f) return;
@@ -810,8 +1092,9 @@ async function runExport() {
 
   const savedRow = state.row;
   const total = f.rows.length;
+  const scale = parseFloat(el.pdfQuality.value) || 2;
 
-  // page setup
+  // ── PDF setup ──
   const wPt = state.doc.w * 0.75;
   const hPt = state.doc.h * 0.75;
   const orientation = wPt > hPt ? 'landscape' : 'portrait';
@@ -824,15 +1107,11 @@ async function runExport() {
   const pdfW = pdf.internal.pageSize.getWidth();
   const pdfH = pdf.internal.pageSize.getHeight();
 
-  // raster scale
-  const maxSide = Math.max(state.doc.w, state.doc.h);
-  const scale = Math.max(1, Math.min(2.5, 2200 / maxSide));
-
   logLine(`<span class="dim">›</span> Page <span class="ok">${state.doc.w}×${state.doc.h}px</span>`);
   logLine(`<span class="dim">›</span> ${total} records · raster ×${scale.toFixed(2)}`);
 
   await document.fonts.ready;
-  await new Promise(r => requestAnimationFrame(r));
+  await preloadAllImages();
 
   const t0 = performance.now();
 
@@ -840,17 +1119,15 @@ async function runExport() {
     if (state.cancelled) break;
 
     state.row = i;
-    refreshAll();
 
-    const row = f.rows[i];
-    const label = String(Object.values(row)[0] ?? `Row ${i + 1}`).slice(0, 60);
-
-    // wait for layout + fonts
-    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+    // Only re-fit text boxes bound to columns (static text doesn't change)
+    for (const b of state.boxes) {
+      if (b.type === 'text' && b.colKey) fitText(b, textFor(b));
+    }
 
     let dataUrl;
     try {
-      dataUrl = await rasterizePage(scale);
+      dataUrl = rasterizeRow(scale);
     } catch (err) {
       logLine(`<span class="dim">✕ row ${i + 1} failed — ${err.message}</span>`);
       continue;
@@ -863,12 +1140,14 @@ async function runExport() {
     el.barFill.style.width = pct + '%';
     el.barLabel.textContent = `${i + 1} / ${total}`;
 
+    const row = f.rows[i];
+    const label = String(Object.values(row)[0] ?? `Row ${i + 1}`).slice(0, 60);
     const stamp = new Date().toLocaleTimeString('en-GB', { hour12: false });
     logLine(`<span class="dim">${stamp}</span> <span class="ok">✓</span> ${i + 1}/${total} — ${escapeHtml(label)}`);
   }
 
   state.row = savedRow;
-  refreshAll();
+  refreshAllText();
   updateCounter();
 
   if (state.cancelled) {
@@ -887,7 +1166,7 @@ async function runExport() {
 
   const name = (el.pdfName.value.trim() || 'printgen-export').replace(/\.pdf$/i, '');
   el.barLabel.textContent = `Saving ${name}.pdf …`;
-  await new Promise(r => setTimeout(r, 120));
+  await new Promise(r => setTimeout(r, 80));
   pdf.save(name + '.pdf');
 
   el.barLabel.textContent = `Saved ${total} pages · ${name}.pdf`;
@@ -898,71 +1177,7 @@ async function runExport() {
   state.exporting = false;
 }
 
-/*
-   Rasterize the page at its true logical size (no zoom, no upscale games)
- */
-async function rasterizePage(pixelRatio) {
-  const page = el.page;
-  const savedTransform = page.style.transform;
-  const savedOrigin = page.style.transformOrigin;
-
-  // Neutralize the editor zoom — the export must render at 1:1 logical size
-  page.style.transform = 'none';
-  page.style.transformOrigin = '0 0';
-
-  // Force a synchronous reflow so dom-to-image measures the un-zoomed box
-  void page.offsetWidth;
-
-  try {
-    return await domtoimage.toJpeg(page, {
-      quality: 0.94,
-      bgcolor: '#ffffff',
-      width: state.doc.w,
-      height: state.doc.h,
-      pixelRatio: pixelRatio,
-      style: { boxShadow: 'none' }
-    });
-  } finally {
-    page.style.transform = savedTransform;
-    page.style.transformOrigin = savedOrigin;
-  }
-}
-
-function resetModalConfirm() {
-  el.modalConfirm.onclick = runExport;
-  el.modalConfirm.querySelector('span').textContent = 'Generate';
-  el.modalCancel.textContent = 'Cancel';
-  el.modalConfirm.classList.remove('hidden');
-}
-
-function escapeHtml(s) {
-  return s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-}
-
-/*
-   THEME
- */
-function currentTheme() {
-  return document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
-}
-
-function applyTheme(t) {
-  document.documentElement.dataset.theme = t;
-  try { localStorage.setItem('printgen.theme', t); } catch (e) {}
-  const icon = t === 'dark' ? 'sun' : 'moon';
-  document.querySelectorAll('.theme-btn').forEach(b => {
-    b.innerHTML = svg(icon);
-    b.title = t === 'dark' ? 'Switch to light mode' : 'Switch to dark mode';
-  });
-}
-
-function toggleTheme() {
-  applyTheme(currentTheme() === 'dark' ? 'light' : 'dark');
-}
-
-/*
-   TOAST
- */
+/*─────────────────── TOAST ───────────────────*/
 let toastTimer = null;
 function toast(msg) {
   let t = document.getElementById('pgToast');
@@ -985,31 +1200,46 @@ function toast(msg) {
   toastTimer = setTimeout(() => {
     t.style.opacity = '0';
     t.style.transform = 'translateX(-50%) translateY(8px)';
-  }, 1800);
+  }, 1500);
 }
 
-/*
-   WIRING
- */
+/*─────────────────── FONT SELECT ───────────────────*/
 function buildFontSelect() {
   el.fontSelect.innerHTML = '';
-  FONTS.forEach(g => {
+  const groups = {};
+  for (const f of FONT_FAMILIES) {
+    (groups[f.group] = groups[f.group] || []).push(f);
+  }
+  for (const g of Object.keys(groups)) {
     const og = document.createElement('optgroup');
-    og.label = g.g;
-    g.list.forEach(f => {
-      const o = document.createElement('option');
-      o.value = f;
-      o.textContent = f;
-      o.style.fontFamily = `'${f}', sans-serif`;
-      og.appendChild(o);
-    });
+    og.label = g;
+    for (const f of groups[g]) {
+      for (const w of f.weights) {
+        const o = document.createElement('option');
+        o.value = `${f.family}|${w}|normal`;
+        o.textContent = `${f.family} ${WEIGHT_LABEL[w] || w}`;
+        o.style.fontFamily = `"${f.family}", sans-serif`;
+        o.style.fontWeight = String(w);
+        og.appendChild(o);
+        if (f.italic) {
+          const oi = document.createElement('option');
+          oi.value = `${f.family}|${w}|italic`;
+          oi.textContent = `${f.family} ${WEIGHT_LABEL[w] || w} Italic`;
+          oi.style.fontFamily = `"${f.family}", sans-serif`;
+          oi.style.fontWeight = String(w);
+          oi.style.fontStyle = 'italic';
+          og.appendChild(oi);
+        }
+      }
+    }
     el.fontSelect.appendChild(og);
-  });
-  el.fontSelect.value = 'Arial';
+  }
+  el.fontSelect.value = 'Inter|400|normal';
 }
 
+/*─────────────────── WIRE EVENTS ───────────────────*/
 function wireEvents() {
-  /* landing */
+  /* Landing */
   $('#createCustom').onclick = () => {
     const w = parseFloat($('#cw').value);
     const h = parseFloat($('#ch').value);
@@ -1019,97 +1249,105 @@ function wireEvents() {
     openEditor(w * px, h * px, `${w}×${h} ${u}`);
   };
 
-  /* editor top */
+  /* Editor top */
   $('#backBtn').onclick = goLanding;
-  $('#addTextBtn').onclick = () => showStylebar(addBox(newBox({})));
-  $('#addStaticBtn').onclick = () => {
-    const b = addBox(newBox({ staticText: '' }));
-    showStylebar(b);
-    setTimeout(() => { el.staticInput.focus(); el.staticInput.select(); }, 40);
-  };
-  $('#addImageBtn').onclick = () => el.imgInput.click();
-  $('#saveTplBtn').onclick = saveTemplate;
-  $('#exportBtn').onclick = openExportModal;
-        const tl = document.getElementById('themeLanding');
-        const te = document.getElementById('themeEditor');
-        if (tl) tl.onclick = toggleTheme;
-        if (te) te.onclick = toggleTheme;
+  $('#addFieldBtn').onclick  = () => addFieldBox();
+  $('#addStaticBtn').onclick = () => addStaticBox();
+  $('#addImageBtn').onclick  = () => el.imgInput.click();
+  $('#saveTplBtn').onclick   = saveTemplate;
+  $('#exportBtn').onclick    = openExportModal;
+
+  const tl = document.getElementById('themeLanding');
+  const te = document.getElementById('themeEditor');
+  if (tl) tl.onclick = toggleTheme;
+  if (te) te.onclick = toggleTheme;
 
   el.imgInput.onchange = async e => {
-    const files = e.target.files;
-    for (const f of Array.from(files)) addImageAtCenter(await readAsDataURL(f));
+    for (const f of Array.from(e.target.files)) {
+      addImageFromSrc(await readAsDataURL(f));
+    }
     e.target.value = '';
   };
   $('#addFileBtn').onclick = () => el.fileInput.click();
   el.fileInput.onchange = e => { ingestFiles(e.target.files); e.target.value = ''; };
 
-  /* style bar */
-  el.staticInput.oninput = () => {
-    const b = state.selected;
-    if (!b || b.staticText === null) return;
-    b.staticText = el.staticInput.value;
-    refreshText(b);
-  };
+  /* Style bar */
   el.fontSelect.onchange = () => {
-    const b = state.selected; if (!b) return;
-    b.font = el.fontSelect.value;
-    refreshText(b);
+    const b = getSelected(); if (!b || b.type !== 'text') return;
+    const [family, weight, style] = el.fontSelect.value.split('|');
+    b.family = family;
+    b.weight = parseInt(weight, 10);
+    b.italic = style === 'italic';
+    updateTextDom(b);
+    showStylebar(b);
   };
   el.textColor.oninput = () => {
-    const b = state.selected; if (!b) return;
+    const b = getSelected(); if (!b || b.type !== 'text') return;
     b.color = el.textColor.value;
-    applyTextStyle(b);
+    updateTextDom(b);
   };
   el.strokeW.oninput = () => {
-    const b = state.selected; if (!b) return;
+    const b = getSelected(); if (!b || b.type !== 'text') return;
     b.strokeW = Math.max(0, parseFloat(el.strokeW.value) || 0);
-    applyTextStyle(b);
+    updateTextDom(b);
   };
   el.strokeColor.oninput = () => {
-    const b = state.selected; if (!b) return;
+    const b = getSelected(); if (!b || b.type !== 'text') return;
     b.strokeColor = el.strokeColor.value;
-    applyTextStyle(b);
+    updateTextDom(b);
   };
   el.boldBtn.onclick = () => {
-    const b = state.selected; if (!b) return;
-    b.bold = !b.bold;
-    el.boldBtn.classList.toggle('on', b.bold);
-    refreshText(b);
+    const b = getSelected(); if (!b || b.type !== 'text') return;
+    // Toggle between current weight and its bold counterpart (400 <-> 700)
+    b.weight = b.weight >= 700 ? 400 : 700;
+    // Pick a weight the family actually supports, if needed
+    const fam = FONT_FAMILIES.find(f => f.family === b.family);
+    if (fam && !fam.weights.includes(b.weight)) {
+      b.weight = fam.weights.reduce((p, c) =>
+        Math.abs(c - b.weight) < Math.abs(p - b.weight) ? c : p, fam.weights[0]);
+    }
+    updateTextDom(b);
+    showStylebar(b);
   };
   el.italicBtn.onclick = () => {
-    const b = state.selected; if (!b) return;
+    const b = getSelected(); if (!b || b.type !== 'text') return;
     b.italic = !b.italic;
-    el.italicBtn.classList.toggle('on', b.italic);
-    refreshText(b);
+    updateTextDom(b);
+    showStylebar(b);
   };
   const alignOrder = ['left', 'center', 'right'];
   const alignIcon  = { left: 'alignL', center: 'alignC', right: 'alignR' };
   el.alignBtn.onclick = () => {
-    const b = state.selected; if (!b) return;
+    const b = getSelected(); if (!b || b.type !== 'text') return;
     b.align = alignOrder[(alignOrder.indexOf(b.align) + 1) % 3];
     el.alignBtn.innerHTML = svg(alignIcon[b.align]);
-    applyTextStyle(b);
+    updateTextDom(b);
   };
 
   /* z-order */
-  $('#zFront').onclick = () => { const b = state.selected; if (b) b.el.style.zIndex = ++state.zTop; };
-  $('#zUp').onclick    = () => { const b = state.selected; if (b) b.el.style.zIndex = ++state.zTop; };
+  const bumpZ = () => { const b = getSelected(); if (b) { b.z = ++state.zTop; b.el.style.zIndex = b.z; } };
+  $('#zFront').onclick = bumpZ;
+  $('#zUp').onclick    = bumpZ;
   $('#zDown').onclick  = () => {
-    const b = state.selected; if (!b) return;
-    b.el.style.zIndex = Math.max(0, (parseInt(b.el.style.zIndex) || 1) - 1);
+    const b = getSelected(); if (!b) return;
+    b.z = Math.max(0, b.z - 1);
+    b.el.style.zIndex = b.z;
   };
-  $('#zBack').onclick  = () => { const b = state.selected; if (b) b.el.style.zIndex = 0; };
-  $('#deleteBtn').onclick = () => { if (state.selected) removeBox(state.selected); };
+  $('#zBack').onclick  = () => {
+    const b = getSelected(); if (!b) return;
+    b.z = 0; b.el.style.zIndex = 0;
+  };
+  $('#deleteBtn').onclick = () => { const b = getSelected(); if (b) removeBox(b); };
 
-  /* rows nav */
+  /* Rows nav */
   $('#prevBtn').onclick = () => goRow(state.row - 1);
   $('#nextBtn').onclick = () => goRow(state.row + 1);
 
-  /* zoom */
+  /* Zoom */
   $('#zoomIn').onclick  = () => setZoom(state.zoom * 1.2);
   $('#zoomOut').onclick = () => setZoom(state.zoom / 1.2);
   $('#zoomFit').onclick = fitZoom;
-  el.zoomValue.onclick  = () => { setZoom(1); };
+  el.zoomValue.onclick  = () => setZoom(1);
 
   el.scroll.addEventListener('wheel', e => {
     if (!e.ctrlKey && !e.metaKey) return;
@@ -1117,41 +1355,60 @@ function wireEvents() {
     setZoom(state.zoom * (e.deltaY < 0 ? 1.1 : 1 / 1.1), { x: e.clientX, y: e.clientY });
   }, { passive: false });
 
-  /* page background deselect */
-  el.page.addEventListener('mousedown', e => { if (e.target === el.page) deselect(); });
+  /* Click empty page = deselect + exit edit */
+  el.page.addEventListener('mousedown', e => {
+    if (e.target === el.page) {
+      const sel = getSelected();
+      if (sel && sel.editing) exitEditMode(sel);
+      deselect();
+    }
+  });
   el.scroll.addEventListener('mousedown', e => {
     if (e.target === el.scroll || e.target === $('#canvasCenter')) deselect();
   });
 
-  /* keyboard */
+  /* Global mousedown: exit edit if click outside the editing box */
+  document.addEventListener('mousedown', e => {
+    const sel = getSelected();
+    if (sel && sel.editing && !sel.el.contains(e.target)) {
+      exitEditMode(sel);
+    }
+  });
+
+  /* Keyboard */
   document.addEventListener('keydown', e => {
     const tag = (e.target.tagName || '').toLowerCase();
     const typing = tag === 'input' || tag === 'textarea' || tag === 'select';
+    const inEdit = e.target.isContentEditable;
 
     if (e.key === 'Escape') {
       if (el.modal.classList.contains('open')) { if (!state.exporting) closeModal(); return; }
+      if (inEdit) { e.target.blur(); return; }
       if (typing) { e.target.blur(); return; }
       deselect();
       return;
     }
-    if (typing) return;
 
-    const b = state.selected;
-    if (!b) {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') return;
-      return;
+    // Copy / cut / paste — work globally, ignore when typing in a form field
+    const mod = e.ctrlKey || e.metaKey;
+    if (mod && !typing && !inEdit) {
+      const k = e.key.toLowerCase();
+      if (k === 'c') { e.preventDefault(); copySelected(); return; }
+      if (k === 'x') { e.preventDefault(); cutSelected(); return; }
+      if (k === 'v') { e.preventDefault(); pasteClipboard(); return; }
+      if (k === 'd') { e.preventDefault(); duplicateSelected(); return; }
     }
+
+    if (typing || inEdit) return;
+
+    const b = getSelected();
+    if (!b) return;
 
     if (e.key === 'Delete' || e.key === 'Backspace') {
       e.preventDefault(); removeBox(b); return;
     }
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd') {
-      e.preventDefault();
-      const copy = newBox(Object.assign({}, b, { id: undefined }));
-      copy.z = ++state.zTop;
-      copy.x = b.x + 16; copy.y = b.y + 16;
-      addBox(copy);
-      return;
+    if (e.key === 'F2' && b.type === 'text' && !b.colKey) {
+      e.preventDefault(); enterEditMode(b); return;
     }
     if (e.key.startsWith('Arrow')) {
       e.preventDefault();
@@ -1165,7 +1422,7 @@ function wireEvents() {
     }
   });
 
-  /* drag & drop */
+  /* Drag & drop */
   let dragDepth = 0;
   const showHint = () => el.dropHint.classList.add('visible');
   const hideHint = () => el.dropHint.classList.remove('visible');
@@ -1180,7 +1437,7 @@ function wireEvents() {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'copy';
   });
-  window.addEventListener('dragleave', e => {
+  window.addEventListener('dragleave', () => {
     if (--dragDepth <= 0) { dragDepth = 0; hideHint(); }
   });
   window.addEventListener('drop', e => {
@@ -1190,7 +1447,7 @@ function wireEvents() {
     ingestFiles(e.dataTransfer.files);
   });
 
-  /* modal */
+  /* Modal */
   el.modalClose.onclick = closeModal;
   el.modalCancel.onclick = () => {
     if (state.exporting) { state.cancelled = true; el.barLabel.textContent = 'Cancelling…'; }
@@ -1199,17 +1456,18 @@ function wireEvents() {
   el.modalConfirm.onclick = runExport;
   el.modal.addEventListener('mousedown', e => { if (e.target === el.modal) closeModal(); });
 
-  /* resize */
+  /* Resize */
   let rt = null;
   window.addEventListener('resize', () => {
     clearTimeout(rt);
-    rt = setTimeout(() => { if (el.editor.classList.contains('active')) fitAll(); }, 200);
+    rt = setTimeout(() => {
+      if (!el.editor.classList.contains('active')) return;
+      refreshAllText();
+    }, 200);
   });
 }
 
-/*
-   BOOT
- */
+/*─────────────────── BOOT ───────────────────*/
 function boot() {
   hydrateIcons();
   buildFontSelect();
@@ -1217,12 +1475,13 @@ function boot() {
   renderTemplates();
   wireEvents();
   resetModalConfirm();
+  applyTheme(currentTheme());
+
+  const y = document.getElementById('year');
+  if (y) y.textContent = new Date().getFullYear();
 
   createDoc(794, 1123, 'A4 Portrait');
   el.colStrip.innerHTML = '<span class="col-hint">Load a spreadsheet to see its columns</span>';
-
-  const y = document.getElementById('year');
-    if (y) y.textContent = new Date().getFullYear();
 }
 
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
