@@ -4,7 +4,7 @@
 (function () {
 'use strict';
 
-/*─────────────────── ICONS ───────────────────*/
+/* ICONS */
 const P = {
   plus:      '<path d="M12 5v14M5 12h14"/>',
   text:      '<path d="M5 6h14M12 6v13M9 19h6"/>',
@@ -32,6 +32,10 @@ const P = {
   file:      '<path d="M14 3v5h5"/><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9l5 5v11a2 2 0 0 1-2 2Z"/>',
   sun:       '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>',
   moon:      '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>',
+  rect:      '<rect x="3" y="5" width="18" height="14" rx="1.5"/>',
+  square:    '<rect x="4" y="4" width="16" height="16" rx="1.5"/>',
+  triangle:  '<path d="m12 4 8 16H4z"/>',
+  star:      '<path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6-5.4-2.9-5.4 2.9 1-6L3.2 9.4l6.1-.9z"/>',
 };
 const svg = (n, c) =>
   `<svg class="ico ${c || ''}" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -43,7 +47,7 @@ function hydrateIcons(root) {
   });
 }
 
-/*─────────────────── CONSTANTS ───────────────────*/
+/* CONSTANTS */
 const UNIT_PX = { px: 1, in: 96, cm: 96 / 2.54, mm: 96 / 25.4, pt: 96 / 72 };
 
 const PRESETS = [
@@ -92,7 +96,7 @@ const LS_TPL   = 'printgen.templates.v2';
 const LS_THEME = 'printgen.theme';
 const LINE_H   = 1.15;
 
-/*─────────────────── STATE ───────────────────*/
+/* STATE */
 const state = {
   doc: { w: 794, h: 1123, name: 'A4 Portrait' },
   boxes: [],
@@ -108,7 +112,7 @@ const state = {
   cancelled: false,
 };
 
-/*─────────────────── DOM ───────────────────*/
+/* DOM */
 const $ = s => document.querySelector(s);
 const el = {
   landing: $('#landing'), editor: $('#editor'),
@@ -130,7 +134,7 @@ const el = {
   modalConfirm: $('#modalConfirm'), modalClose: $('#modalClose')
 };
 
-/*─────────────────── TEXT MEASUREMENT (offscreen canvas) ───────────────────*/
+/* TEXT MEASUREMENT (offscreen canvas) */
 const measure = document.createElement('canvas').getContext('2d');
 
 function fontString(b, size) {
@@ -186,7 +190,7 @@ function fitText(b, text) {
   return best;
 }
 
-/*─────────────────── THEME ───────────────────*/
+/* THEME */
 function currentTheme() {
   return document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
 }
@@ -203,7 +207,7 @@ function toggleTheme() {
   applyTheme(currentTheme() === 'dark' ? 'light' : 'dark');
 }
 
-/*─────────────────── LANDING ───────────────────*/
+/* LANDING */
 function renderPresets() {
   el.presetGrid.innerHTML = '';
   PRESETS.forEach(p => {
@@ -288,7 +292,7 @@ function goLanding() {
   renderTemplates();
 }
 
-/*─────────────────── ZOOM ───────────────────*/
+/* ZOOM */
 function updateStageSize() {
   el.stage.style.width  = (state.doc.w * state.zoom) + 'px';
   el.stage.style.height = (state.doc.h * state.zoom) + 'px';
@@ -324,7 +328,7 @@ function fitZoom() {
   el.scroll.scrollTop  = (el.scroll.scrollHeight - r.height) / 2;
 }
 
-/*─────────────────── BOX MODEL ───────────────────*/
+/* BOX MODEL */
 function newTextBox(partial) {
   return Object.assign({
     id: 'b' + (++state.seq),
@@ -353,6 +357,19 @@ function newImageBox(src, partial) {
   }, partial || {});
 }
 
+function newShapeBox(shape, partial) {
+  return Object.assign({
+    id: 'b' + (++state.seq),
+    type: 'shape',
+    shape: shape || 'rect',
+    x: 60, y: 60, w: 200, h: 130,
+    z: ++state.zTop,
+    fill: '#0d9488',
+    stroke: '#0f766e',
+    strokeW: 2
+  }, partial || {});
+}
+
 function getBox(id) { return state.boxes.find(b => b.id === id); }
 function getSelected() { return state.selectedId ? getBox(state.selectedId) : null; }
 
@@ -367,7 +384,7 @@ function textFor(b) {
   return b.staticText || '';
 }
 
-/*─────────────────── DOM RENDERING ───────────────────*/
+/* DOM RENDERING */
 function renderBox(b) {
   const div = document.createElement('div');
   div.className = 'pg-obj';
@@ -385,12 +402,18 @@ function renderBox(b) {
     t.spellcheck = false;
     div.appendChild(t);
     b.textEl = t;
-  } else {
+  } else if (b.type === 'image') {
     const img = document.createElement('img');
     img.draggable = false;
     img.src = b.src;
     div.appendChild(img);
     b.imgEl = img;
+  } else if (b.type === 'shape') {
+    const svgEl = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svgEl.setAttribute('preserveAspectRatio', 'none');
+    svgEl.setAttribute('class', 'pg-shape-svg');
+    div.appendChild(svgEl);
+    b.shapeEl = svgEl;
   }
 
   const handles = document.createElement('div');
@@ -413,6 +436,7 @@ function renderBox(b) {
 
   wireBox(b);
   if (b.type === 'text') updateTextDom(b);
+  else if (b.type === 'shape') updateShapeDom(b);
   return div;
 }
 
@@ -460,7 +484,7 @@ function updateTextDom(b) {
   }
 }
 
-/*─────────────────── SELECTION ───────────────────*/
+/* SELECTION */
 function selectBox(b) {
   const id = b ? b.id : null;
   if (state.selectedId === id) return;
@@ -478,23 +502,42 @@ function deselect() { selectBox(null); }
 
 function showStylebar(b) {
   el.stylebar.classList.add('visible');
+
   if (b.type === 'image') {
     el.sbText.style.display = 'none';
     return;
   }
+
   el.sbText.style.display = 'flex';
-  el.fontSelect.value = `${b.family}|${b.weight}|${b.italic ? 'italic' : 'normal'}`;
-  el.textColor.value  = b.color;
-  el.strokeW.value    = b.strokeW;
-  el.strokeColor.value = b.strokeColor;
-  el.boldBtn.classList.toggle('on', b.weight >= 700);
-  el.italicBtn.classList.toggle('on', b.italic);
-  el.alignBtn.innerHTML = svg({left:'alignL', center:'alignC', right:'alignR'}[b.align]);
+
+  // Show/hide text-only controls
+  const isText = b.type === 'text';
+  el.sbText.querySelectorAll('.sb-text-only').forEach(x => {
+    x.classList.toggle('hidden', !isText);
+  });
+
+  if (isText) {
+    el.lblColor.textContent  = 'Color';
+    el.lblStroke.textContent = 'Outline';
+    el.fontSelect.value      = `${b.family}|${b.weight}|${b.italic ? 'italic' : 'normal'}`;
+    el.textColor.value       = b.color;
+    el.strokeW.value         = b.strokeW;
+    el.strokeColor.value     = b.strokeColor;
+    el.boldBtn.classList.toggle('on', b.weight >= 700);
+    el.italicBtn.classList.toggle('on', b.italic);
+    el.alignBtn.innerHTML    = svg({left:'alignL', center:'alignC', right:'alignR'}[b.align]);
+  } else if (b.type === 'shape') {
+    el.lblColor.textContent  = 'Fill';
+    el.lblStroke.textContent = 'Border';
+    el.textColor.value       = b.fill;
+    el.strokeW.value         = b.strokeW;
+    el.strokeColor.value     = b.stroke;
+  }
 }
 
 function hideStylebar() { el.stylebar.classList.remove('visible'); }
 
-/*─────────────────── INTERACTION ───────────────────*/
+/* INTERACTION */
 function wireBox(b) {
   b.el.addEventListener('mousedown', e => {
     if (e.target.classList.contains('pg-handle')) return;
@@ -546,6 +589,7 @@ function startDrag(e, b) {
 function startResize(e, b, dir) {
   const sx = e.clientX, sy = e.clientY;
   const ox = b.x, oy = b.y, ow = b.w, oh = b.h, z = state.zoom;
+
   // Aspect ratio lock: default on for images, off for text.
   // Hold Shift to invert.
   const wantsLock = b.type === 'image' ? !e.shiftKey : e.shiftKey;
@@ -576,17 +620,20 @@ function startResize(e, b, dir) {
     b.el.style.top    = b.y + 'px';
     b.el.style.width  = b.w + 'px';
     b.el.style.height = b.h + 'px';
+
     if (b.type === 'text') updateTextDom(b);
+    else if (b.type === 'shape') updateShapeDom(b);
   };
   const up = () => {
     document.removeEventListener('mousemove', move);
     document.removeEventListener('mouseup', up);
   };
+
   document.addEventListener('mousemove', move);
   document.addEventListener('mouseup', up);
 }
 
-/*─────────────────── INLINE EDIT ───────────────────*/
+/* INLINE EDIT */
 function enterEditMode(b) {
   if (b.type !== 'text' || b.colKey || b.editing) return;
   b.editing = true;
@@ -639,12 +686,12 @@ function exitEditMode(b) {
   updateTextDom(b);
 }
 
-/*─────────────────── CLIPBOARD ───────────────────*/
+/* CLIPBOARD */
 function cloneBoxData(b) {
   const o = {};
   for (const k in b) {
-    if (k === 'el' || k === 'textEl' || k === 'imgEl' || k === '_img' ||
-        k === '_editCleanup' || k === '_fitSize' || k === 'editing') continue;
+    if (k === 'el' || k === 'textEl' || k === 'imgEl' || k === 'shapeEl' ||
+        k === '_img' || k === '_editCleanup' || k === '_fitSize' || k === 'editing') continue;
     o[k] = b[k];
   }
   return o;
@@ -699,7 +746,7 @@ function duplicateSelected() {
   selectBox(copy);
 }
 
-/*─────────────────── ADD / REMOVE ───────────────────*/
+/* ADD / REMOVE */
 function addFieldBox(colKey) {
   const b = newTextBox({ colKey: colKey || null, staticText: colKey ? null : '' });
   state.boxes.push(b);
@@ -741,6 +788,26 @@ function addImageFromSrc(src) {
   img.src = src;
 }
 
+function addShapeBox(shape) {
+  const defaults = {
+    rect:     { w: 220, h: 130 },
+    square:   { w: 150, h: 150 },
+    triangle: { w: 150, h: 130 },
+    star:     { w: 160, h: 160 }
+  }[shape] || { w: 180, h: 120 };
+
+  const b = newShapeBox(shape, {
+    w: defaults.w,
+    h: defaults.h,
+    x: Math.round((state.doc.w - defaults.w) / 2),
+    y: Math.round((state.doc.h - defaults.h) / 3)
+  });
+  state.boxes.push(b);
+  renderBox(b);
+  selectBox(b);
+  return b;
+}
+
 function removeBox(b) {
   if (b.el) b.el.remove();
   const i = state.boxes.indexOf(b);
@@ -748,7 +815,7 @@ function removeBox(b) {
   if (state.selectedId === b.id) { state.selectedId = null; hideStylebar(); }
 }
 
-/*─────────────────── FILES & DATA ───────────────────*/
+/* FILES & DATA */
 function readDataFile(file) {
   return new Promise((resolve, reject) => {
     const r = new FileReader();
@@ -910,7 +977,7 @@ function refreshAllText() {
   }
 }
 
-/*─────────────────── TEMPLATES ───────────────────*/
+/* TEMPLATES */
 function saveTemplate() {
   const f = state.files[state.activeFile];
   const suggested = state.doc.name !== 'Custom' ? state.doc.name : 'My template';
@@ -953,7 +1020,89 @@ function loadTemplate(t) {
   });
 }
 
-/*─────────────────── EXPORT (Canvas 2D — fast) ───────────────────*/
+/* SHAPES */
+function shapePoints(shape, w, h, strokeW) {
+  const sw = Math.max(0, strokeW || 0);
+  const inset = sw / 2;
+  const iw = Math.max(1, w - sw);
+  const ih = Math.max(1, h - sw);
+
+  if (shape === 'triangle') {
+    return {
+      kind: 'poly',
+      points: [
+        { x: inset + iw / 2, y: inset },
+        { x: inset + iw,     y: inset + ih },
+        { x: inset,          y: inset + ih }
+      ]
+    };
+  }
+
+  if (shape === 'star') {
+    const cx = w / 2, cy = h / 2;
+    const pts = [];
+    for (let i = 0; i < 10; i++) {
+      const ang = -Math.PI / 2 + i * Math.PI / 5;
+      const rad = (i % 2 === 0 ? 1 : 0.382);
+      pts.push({
+        x: cx + Math.cos(ang) * rad * iw / 2,
+        y: cy + Math.sin(ang) * rad * ih / 2
+      });
+    }
+    return { kind: 'poly', points: pts };
+  }
+
+  // rect / square
+  return { kind: 'rect', x: inset, y: inset, w: iw, h: ih };
+}
+
+function shapeInnerSvg(b) {
+  const spec = shapePoints(b.shape, b.w, b.h, b.strokeW);
+  const sw = Math.max(0, b.strokeW || 0);
+  const strokeAttr = sw > 0
+    ? `stroke="${b.stroke}" stroke-width="${sw}" stroke-linejoin="miter" stroke-miterlimit="4"`
+    : 'stroke="none"';
+  const fillAttr = `fill="${b.fill}"`;
+  if (spec.kind === 'rect') {
+    return `<rect x="${spec.x}" y="${spec.y}" width="${spec.w}" height="${spec.h}" ${fillAttr} ${strokeAttr}/>`;
+  }
+  const pts = spec.points.map(p => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(' ');
+  return `<polygon points="${pts}" ${fillAttr} ${strokeAttr}/>`;
+}
+
+function updateShapeDom(b) {
+  if (b.type !== 'shape' || !b.shapeEl) return;
+  b.shapeEl.setAttribute('viewBox', `0 0 ${b.w} ${b.h}`);
+  b.shapeEl.innerHTML = shapeInnerSvg(b);
+}
+
+function drawShapeBox(ctx, b) {
+  const spec = shapePoints(b.shape, b.w, b.h, b.strokeW);
+  ctx.save();
+  ctx.translate(b.x, b.y);
+  ctx.beginPath();
+  if (spec.kind === 'rect') {
+    ctx.rect(spec.x, spec.y, spec.w, spec.h);
+  } else {
+    const p = spec.points;
+    ctx.moveTo(p[0].x, p[0].y);
+    for (let i = 1; i < p.length; i++) ctx.lineTo(p[i].x, p[i].y);
+    ctx.closePath();
+  }
+  ctx.fillStyle = b.fill;
+  ctx.fill();
+  if (b.strokeW > 0) {
+    ctx.strokeStyle = b.stroke;
+    ctx.lineWidth = b.strokeW;
+    ctx.lineJoin = 'miter';
+    ctx.miterLimit = 4;
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+
+/* EXPORT (Canvas 2D — fast) */
 function drawTextBox(ctx, b, text) {
   if (!text) return;
   const size = b._fitSize || fitText(b, text);
@@ -1027,12 +1176,13 @@ function rasterizeRow(scale) {
   const sorted = state.boxes.slice().sort((a, b) => a.z - b.z);
   for (const b of sorted) {
     if (b.type === 'image') drawImageBox(ctx, b);
+    else if (b.type === 'shape') drawShapeBox(ctx, b);
     else drawTextBox(ctx, b, textFor(b));
   }
   return canvas.toDataURL('image/jpeg', 0.92);
 }
 
-/*─────────────────── EXPORT MODAL ───────────────────*/
+/* EXPORT MODAL */
 function logLine(html) {
   const d = document.createElement('div');
   d.className = 'console-line';
@@ -1177,7 +1327,7 @@ async function runExport() {
   state.exporting = false;
 }
 
-/*─────────────────── TOAST ───────────────────*/
+/* TOAST */
 let toastTimer = null;
 function toast(msg) {
   let t = document.getElementById('pgToast');
@@ -1203,7 +1353,7 @@ function toast(msg) {
   }, 1500);
 }
 
-/*─────────────────── FONT SELECT ───────────────────*/
+/* FONT SELECT */
 function buildFontSelect() {
   el.fontSelect.innerHTML = '';
   const groups = {};
@@ -1237,7 +1387,7 @@ function buildFontSelect() {
   el.fontSelect.value = 'Inter|400|normal';
 }
 
-/*─────────────────── WIRE EVENTS ───────────────────*/
+/* WIRE EVENTS */
 function wireEvents() {
   /* Landing */
   $('#createCustom').onclick = () => {
@@ -1254,6 +1404,24 @@ function wireEvents() {
   $('#addFieldBtn').onclick  = () => addFieldBox();
   $('#addStaticBtn').onclick = () => addStaticBox();
   $('#addImageBtn').onclick  = () => el.imgInput.click();
+    // Shape dropdown menu
+  const shapeMenu = document.getElementById('shapeMenu');
+  const shapeBtn  = document.getElementById('addShapeBtn');
+  shapeBtn.onclick = e => {
+    e.stopPropagation();
+    shapeMenu.classList.toggle('open');
+  };
+  shapeMenu.querySelectorAll('.menu-item').forEach(mi => {
+    mi.onclick = () => {
+      shapeMenu.classList.remove('open');
+      addShapeBox(mi.dataset.shape);
+    };
+  });
+  document.addEventListener('click', e => {
+    if (!shapeMenu.contains(e.target) && e.target !== shapeBtn) {
+      shapeMenu.classList.remove('open');
+    }
+  });
   $('#saveTplBtn').onclick   = saveTemplate;
   $('#exportBtn').onclick    = openExportModal;
 
@@ -1282,19 +1450,35 @@ function wireEvents() {
     showStylebar(b);
   };
   el.textColor.oninput = () => {
-    const b = getSelected(); if (!b || b.type !== 'text') return;
-    b.color = el.textColor.value;
-    updateTextDom(b);
+    const b = getSelected(); if (!b) return;
+    if (b.type === 'text') {
+      b.color = el.textColor.value;
+      updateTextDom(b);
+    } else if (b.type === 'shape') {
+      b.fill = el.textColor.value;
+      updateShapeDom(b);
+    }
   };
   el.strokeW.oninput = () => {
-    const b = getSelected(); if (!b || b.type !== 'text') return;
-    b.strokeW = Math.max(0, parseFloat(el.strokeW.value) || 0);
-    updateTextDom(b);
+    const b = getSelected(); if (!b) return;
+    const v = Math.max(0, parseFloat(el.strokeW.value) || 0);
+    if (b.type === 'text') {
+      b.strokeW = v;
+      updateTextDom(b);
+    } else if (b.type === 'shape') {
+      b.strokeW = v;
+      updateShapeDom(b);
+    }
   };
   el.strokeColor.oninput = () => {
-    const b = getSelected(); if (!b || b.type !== 'text') return;
-    b.strokeColor = el.strokeColor.value;
-    updateTextDom(b);
+    const b = getSelected(); if (!b) return;
+    if (b.type === 'text') {
+      b.strokeColor = el.strokeColor.value;
+      updateTextDom(b);
+    } else if (b.type === 'shape') {
+      b.stroke = el.strokeColor.value;
+      updateShapeDom(b);
+    }
   };
   el.boldBtn.onclick = () => {
     const b = getSelected(); if (!b || b.type !== 'text') return;
@@ -1467,7 +1651,7 @@ function wireEvents() {
   });
 }
 
-/*─────────────────── BOOT ───────────────────*/
+/* BOOT */
 function boot() {
   hydrateIcons();
   buildFontSelect();
