@@ -47,6 +47,8 @@ PDF page — with images, custom fonts, outlines, and per-cell text styling.
 - **RTL support** — automatic Arabic / Hebrew detection, per-box.
 - **Zoom** — buttons, `Ctrl/Cmd + scroll` centered on the cursor, fit-to-screen.
 - **Dark mode** — respects `prefers-color-scheme` on first run, then remembers your choice.
+- **Shapes** — rectangle, square, triangle, and star, with independent fill color,
+  border color, and border width.
 
 ### Data
 
