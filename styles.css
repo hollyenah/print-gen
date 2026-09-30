@@ -467,38 +467,6 @@ button { font-family: inherit;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
-.col-strip {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  overflow-x: auto;
-  flex: 1 1 auto;
-  min-width: 0;
-  scrollbar-width: none;
-}
-.col-strip::-webkit-scrollbar { display: none;
-}
-.col-pill {
-  padding: 5px 11px;
-  flex: 0 0 auto;
-  border: 1px solid var(--border-2);
-  background: var(--surface);
-  border-radius: 99px;
-  font-size: 12px;
-  color: var(--text-2);
-  cursor: pointer;
-  white-space: nowrap;
-  transition: all .13s;
-}
-.col-pill:hover { border-color: var(--teal);
-    color: var(--teal);
-    background: var(--teal-50);
-}
-.col-hint { font-size: 12px;
-    color: var(--text-3);
-    white-space: nowrap;
-    padding-left: 4px;
-}
 .topbar-right { display: flex;
     gap: 8px;
     flex: 0 0 auto;
@@ -1084,17 +1052,14 @@ button { font-family: inherit;
 }
 
 
-/* 
-   DARK THEME
-    */
+/* DARK THEME */
 
 body, .topbar, .stylebar, .sidebar, .canvas-scroll, .panel,
 .btn, .icon-btn, .mini-btn, .tgl, .field input, .field select,
 .sel-font, .num-xs, .swatch, #staticInput, .col-pill,
 .file-item, .row-item, .tpl-item, .preset,
 .modal, .modal-head, .modal-foot, .zoom-bar {
-  transition: background-color .18s ease, border-color .18s ease,
-              color .18s ease, box-shadow .18s ease;
+  transition: background-color .18s ease, border-color .18s ease,color .18s ease, box-shadow .18s ease;
 }
 
 [data-theme="dark"] {
@@ -1132,7 +1097,7 @@ body, .topbar, .stylebar, .sidebar, .canvas-scroll, .panel,
     var(--bg);
 }
 
-/* the "paper" stays white — it's what gets exported */
+
 [data-theme="dark"] #page {
   box-shadow: 0 1px 3px rgba(0,0,0,.65), 0 18px 50px rgba(0,0,0,.55);
 }
@@ -1164,7 +1129,7 @@ body, .topbar, .stylebar, .sidebar, .canvas-scroll, .panel,
 
 /* Secondary text needs more contrast against dark surfaces */
 [data-theme="dark"] {
-  --text-3: #a8a49d;   /* was #7a776f — same as --text-2 for legibility */
+  --text-3: #a8a49d;
 }
 
 /* Explicit safety net — every text element gets its color from the theme vars,
@@ -1274,3 +1239,47 @@ body, .topbar, .stylebar, .sidebar, .canvas-scroll, .panel,
 /* STYLEBAR: hide text-only controls when a shape is selected */
 .sb-text-only { display: inline-flex; align-items: center; gap: 7px; }
 .sb-text-only.hidden { display: none; }
+
+/* COLUMNS BLOCK (sidebar) */
+.col-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  overflow-y: auto;
+  max-height: 200px;
+  padding-right: 2px;
+}
+.col-list::-webkit-scrollbar { width: 3px; }
+.col-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
+
+.col-item {
+  flex-shrink: 0;
+  display: block;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: var(--r-sm);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-2);
+  font-family: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: all .12s;
+}
+.col-item:hover {
+  background: var(--surface-3);
+  color: var(--text);
+}
+.col-item:active {
+  transform: translateY(.5px);
+}
+.col-item.bound {
+  background: var(--teal-50);
+  border-color: var(--teal-100);
+  color: var(--teal-700);
+  font-weight: 500;
+}

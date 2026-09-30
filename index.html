@@ -111,9 +111,6 @@
     </div>
   </div>
 
-    <span class="divider"></span>
-    <div class="col-strip" id="colStrip"></div>
-
     <div class="topbar-right">
       <button class="icon-btn theme-btn" id="themeEditor" data-icon="moon" title="Toggle theme"></button>
       <button class="btn" id="saveTplBtn"><i data-icon="save"></i><span>Save template</span></button>
@@ -165,6 +162,18 @@
           <div class="empty-note">Drop an .xlsx or .csv anywhere</div>
         </div>
       </div>
+
+      <div class="side-block">
+        <div class="side-head">
+          <span>Columns</span>
+          <span class="counter" id="colCount"></span>
+        </div>
+        <div class="col-list" id="colList">
+          <div class="empty-note">No columns yet</div>
+        </div>
+      </div>
+
+      <div class="side-block grow" id="recordsBlock">
 
       <div class="side-block grow" id="recordsBlock">
         <div class="side-head">
