@@ -159,11 +159,18 @@ function wrapText(ctx, text, maxW) {
   return out;
 }
 
+const _fitCache = new Map();
+const FIT_CACHE_MAX = 4000;
+
 /* Find the largest font size where `text` fits inside (w × h). */
 function fitText(b, text) {
   if (!text) { b._fitSize = 12; return 12; }
   const W = b.w, H = b.h;
   if (W <= 2 || H <= 2) { b._fitSize = 4; return 4; }
+
+  const key = `${W}|${H}|${b.family}|${b.weight}|${b.italic}|${text}`;
+  const hit = _fitCache.get(key);
+  if (hit !== undefined) { b._fitSize = hit; return hit; }
 
   // Longest word = hard lower bound for the font size
   const words = text.split(/\s+/).filter(Boolean);
@@ -186,6 +193,9 @@ function fitText(b, text) {
     if (height <= H) { best = mid; lo = mid + 1; }
     else hi = mid - 1;
   }
+  b._fitSize = best;
+  if (_fitCache.size >= FIT_CACHE_MAX) _fitCache.clear();
+  _fitCache.set(key, best);
   b._fitSize = best;
   return best;
 }
@@ -946,32 +956,94 @@ function buildColumns() {
   }
 }
 
+const ROW_H = 34;
+let _rowVirtualState = null;
+
 function buildRows() {
   el.rowList.innerHTML = '';
+  _rowVirtualState = null;
+
   const f = state.files[state.activeFile];
   if (!f) { el.navCounter.textContent = '0 / 0'; return; }
-  const frag = document.createDocumentFragment();
-  f.rows.forEach((row, i) => {
-    const d = document.createElement('div');
-    d.className = 'row-item' + (i === state.row ? ' active' : '');
-    const vals = Object.values(row).slice(0, 2).map(v => String(v)).filter(Boolean);
-    d.textContent = vals.join(' · ') || 'Row ' + (i + 1);
-    d.title = d.textContent;
-    d.onclick = () => goRow(i);
-    frag.appendChild(d);
-  });
-  el.rowList.appendChild(frag);
+
+  const total = f.rows.length;
+
+  // Small lists: render normally (no virtualization overhead)
+  if (total <= 100) {
+    const frag = document.createDocumentFragment();
+    f.rows.forEach((row, i) => frag.appendChild(makeRowItem(row, i)));
+    el.rowList.appendChild(frag);
+    updateCounter();
+    return;
+  }
+
+  // Large lists: virtualize
+  el.rowList.style.position = 'relative';
+
+  const spacer = document.createElement('div');
+  spacer.style.cssText = `height:${total * ROW_H}px;width:1px;pointer-events:none;`;
+  el.rowList.appendChild(spacer);
+
+  const viewport = document.createElement('div');
+  viewport.style.cssText = 'position:absolute;top:0;left:0;right:0;';
+  el.rowList.appendChild(viewport);
+
+  const render = () => {
+    const st = el.rowList.scrollTop;
+    const h  = el.rowList.clientHeight || 400;
+    const first = Math.max(0, Math.floor(st / ROW_H) - 4);
+    const last  = Math.min(total, Math.ceil((st + h) / ROW_H) + 4);
+
+    viewport.style.transform = `translateY(${first * ROW_H}px)`;
+    viewport.innerHTML = '';
+    const frag = document.createDocumentFragment();
+    for (let i = first; i < last; i++) {
+      frag.appendChild(makeRowItem(f.rows[i], i));
+    }
+    viewport.appendChild(frag);
+  };
+
+  _rowVirtualState = { render, total, viewport };
+
+  el.rowList.onscroll = () => {
+    if (_rowVirtualState) _rowVirtualState.render();
+  };
+  render();
   updateCounter();
+}
+
+function makeRowItem(row, i) {
+  const d = document.createElement('div');
+  d.className = 'row-item' + (i === state.row ? ' active' : '');
+  d.dataset.idx = i;
+  d.style.height = ROW_H + 'px';
+  const vals = Object.values(row).slice(0, 2).map(v => String(v)).filter(Boolean);
+  d.textContent = vals.join(' · ') || 'Row ' + (i + 1);
+  d.title = d.textContent;
+  d.onclick = () => goRow(i);
+  return d;
 }
 
 function goRow(i) {
   const f = state.files[state.activeFile];
   if (!f) return;
   state.row = Math.max(0, Math.min(f.rows.length - 1, i));
-  el.rowList.querySelectorAll('.row-item').forEach((n, k) =>
-    n.classList.toggle('active', k === state.row));
-  const act = el.rowList.querySelector('.row-item.active');
-  if (act) act.scrollIntoView({ block: 'nearest' });
+
+  if (_rowVirtualState) {
+    // Bring the active row into view before re-rendering
+    const target = state.row * ROW_H;
+    const st = el.rowList.scrollTop;
+    const h  = el.rowList.clientHeight;
+    if (target < st) el.rowList.scrollTop = target;
+    else if (target + ROW_H > st + h) el.rowList.scrollTop = target + ROW_H - h + 4;
+    _rowVirtualState.render();
+  } else {
+    el.rowList.querySelectorAll('.row-item').forEach((n, k) =>
+      n.classList.toggle('active', k === state.row));
+    const act = el.rowList.querySelector('.row-item.active');
+    if (act) act.scrollIntoView({ block: 'nearest' });
+  }
+
   updateCounter();
   refreshAllText();
 }
@@ -1193,6 +1265,30 @@ function rasterizeRow(scale) {
   return canvas.toDataURL('image/jpeg', 0.92);
 }
 
+async function rasterizeRowBlob(scale) {
+  const canvas = document.createElement('canvas');
+  canvas.width  = Math.max(1, Math.round(state.doc.w * scale));
+  canvas.height = Math.max(1, Math.round(state.doc.h * scale));
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.scale(scale, scale);
+
+  const sorted = state.boxes.slice().sort((a, b) => a.z - b.z);
+  for (const b of sorted) {
+    if (b.type === 'image') drawImageBox(ctx, b);
+    else if (b.type === 'shape') drawShapeBox(ctx, b);
+    else drawTextBox(ctx, b, textFor(b));
+  }
+
+  // Async encode — does not block the JS thread on most engines
+  const blob = await new Promise(res =>
+    canvas.toBlob(res, 'image/jpeg', 0.92)
+  );
+  const buf = await blob.arrayBuffer();
+  return new Uint8Array(buf);
+}
+
 /* EXPORT MODAL */
 function logLine(html) {
   const d = document.createElement('div');
@@ -1212,6 +1308,10 @@ function openExportModal() {
   if (!f) { alert('Load a spreadsheet first.'); return; }
   if (!state.boxes.length) { alert('Add at least one object to the page first.'); return; }
 
+  // Warring message
+  if (f.rows.length > 5000) {
+    if (!confirm(`${f.rows.length} records will be exported. This may take several minutes and use significant memory. Continue?`)) return;
+  }
   el.modalTitle.textContent = 'Export PDF';
   el.modalSetup.classList.remove('hidden');
   el.modalProgress.classList.add('hidden');
@@ -1253,7 +1353,11 @@ async function runExport() {
 
   const savedRow = state.row;
   const total = f.rows.length;
-  const scale = parseFloat(el.pdfQuality.value) || 2;
+
+  // ── Auto-pick scale if the user has many rows (avoids OOM) ──
+  let scale = parseFloat(el.pdfQuality.value) || 2;
+  if (total > 3000)      scale = Math.min(scale, 1);
+  else if (total > 1500) scale = Math.min(scale, 1.5);
 
   // ── PDF setup ──
   const wPt = state.doc.w * 0.75;
@@ -1269,34 +1373,34 @@ async function runExport() {
   const pdfH = pdf.internal.pageSize.getHeight();
 
   logLine(`<span class="dim">›</span> Page <span class="ok">${state.doc.w}×${state.doc.h}px</span>`);
-  logLine(`<span class="dim">›</span> ${total} records · raster ×${scale.toFixed(2)}`);
+  logLine(`<span class="dim">›</span> ${total} records · raster ×${scale.toFixed(2)}${total > 1500 ? ' (auto-reduced)' : ''}`);
 
   await document.fonts.ready;
   await preloadAllImages();
 
   const t0 = performance.now();
+  let lastYield = t0;
 
   for (let i = 0; i < total; i++) {
     if (state.cancelled) break;
 
     state.row = i;
-
-    // Only re-fit text boxes bound to columns (static text doesn't change)
     for (const b of state.boxes) {
       if (b.type === 'text' && b.colKey) fitText(b, textFor(b));
     }
 
-    let dataUrl;
+    let jpegBytes;
     try {
-      dataUrl = rasterizeRow(scale);
+      jpegBytes = await rasterizeRowBlob(scale);
     } catch (err) {
       logLine(`<span class="dim">✕ row ${i + 1} failed — ${err.message}</span>`);
       continue;
     }
 
     if (i > 0) pdf.addPage();
-    pdf.addImage(dataUrl, 'JPEG', 0, 0, pdfW, pdfH);
+    pdf.addImage(jpegBytes, 'JPEG', 0, 0, pdfW, pdfH);
 
+    // Light UI update every row
     const pct = Math.round(((i + 1) / total) * 100);
     el.barFill.style.width = pct + '%';
     el.barLabel.textContent = `${i + 1} / ${total}`;
@@ -1305,6 +1409,12 @@ async function runExport() {
     const label = String(Object.values(row)[0] ?? `Row ${i + 1}`).slice(0, 60);
     const stamp = new Date().toLocaleTimeString('en-GB', { hour12: false });
     logLine(`<span class="dim">${stamp}</span> <span class="ok">✓</span> ${i + 1}/${total} — ${escapeHtml(label)}`);
+
+    // ── Yield to the event loop every ~40ms so the tab stays alive ──
+    if (performance.now() - lastYield > 40) {
+      await new Promise(r => setTimeout(r, 0));
+      lastYield = performance.now();
+    }
   }
 
   state.row = savedRow;
