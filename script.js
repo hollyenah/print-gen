@@ -118,7 +118,7 @@ const el = {
   landing: $('#landing'), editor: $('#editor'),
   page: $('#page'), stage: $('#canvasStage'), scroll: $('#canvasScroll'),
   presetGrid: $('#presetGrid'), templateList: $('#templateList'), tplCount: $('#tplCount'),
-  docBadge: $('#docBadge'), colStrip: $('#colStrip'), stylebar: $('#stylebar'),
+  docBadge: $('#docBadge'), colList: $('#colList'), colCount: $('#colCount'), stylebar: $('#stylebar'),
   sbText: $('#sbText'),
   fontSelect: $('#fontSelect'), textColor: $('#textColor'),
   strokeW: $('#strokeW'), strokeColor: $('#strokeColor'),
@@ -493,9 +493,10 @@ function selectBox(b) {
     if (prev && prev.el) prev.el.classList.remove('selected');
   }
   state.selectedId = id;
-  if (!b) { hideStylebar(); return; }
+  if (!b) { hideStylebar(); buildColumns(); return; }
   b.el.classList.add('selected');
   showStylebar(b);
+  buildColumns();
 }
 
 function deselect() { selectBox(null); }
@@ -898,7 +899,7 @@ function removeFile(i) {
   state.files.splice(i, 1);
   if (!state.files.length) {
     state.activeFile = -1;
-    el.colStrip.innerHTML = '';
+    buildColumns();
     el.rowList.innerHTML = '';
     el.navCounter.textContent = '0 / 0';
     buildFileList();
@@ -909,30 +910,40 @@ function removeFile(i) {
 }
 
 function buildColumns() {
-  el.colStrip.innerHTML = '';
+  el.colList.innerHTML = '';
   const f = state.files[state.activeFile];
+
   if (!f) {
-    el.colStrip.innerHTML = '<span class="col-hint">Load a spreadsheet to see its columns</span>';
+    el.colList.innerHTML = '<div class="empty-note">No columns yet</div>';
+    if (el.colCount) el.colCount.textContent = '';
     return;
   }
-  f.columns.forEach(c => {
+
+  if (el.colCount) el.colCount.textContent = f.columns.length;
+
+  // Which column is currently bound to the selected text box?
+  const sel = getSelected();
+  const boundKey = sel && sel.type === 'text' ? sel.colKey : null;
+
+  for (const c of f.columns) {
     const b = document.createElement('button');
-    b.className = 'col-pill';
+    b.className = 'col-item' + (c === boundKey ? ' bound' : '');
     b.textContent = c;
     b.title = 'Bind to selected field — or create a new one';
     b.onclick = () => {
-      const sel = getSelected();
-      if (sel && sel.type === 'text') {
-        sel.colKey = c;
-        sel.staticText = null;
-        updateTextDom(sel);
-        showStylebar(sel);
+      const s = getSelected();
+      if (s && s.type === 'text') {
+        s.colKey = c;
+        s.staticText = null;
+        updateTextDom(s);
+        showStylebar(s);
+        buildColumns();
       } else {
         addFieldBox(c);
       }
     };
-    el.colStrip.appendChild(b);
-  });
+    el.colList.appendChild(b);
+  }
 }
 
 function buildRows() {
@@ -1665,7 +1676,7 @@ function boot() {
   if (y) y.textContent = new Date().getFullYear();
 
   createDoc(794, 1123, 'A4 Portrait');
-  el.colStrip.innerHTML = '<span class="col-hint">Load a spreadsheet to see its columns</span>';
+  buildColumns();
 }
 
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
