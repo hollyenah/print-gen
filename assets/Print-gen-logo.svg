@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg width="100%" height="100%" viewBox="0 0 500 500" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" xmlns:serif="http://www.serif.com/" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linecap:round;stroke-miterlimit:1.5;">
+    <g transform="matrix(1.330447,0,0,1.121655,-100.572872,-23.122871)">
+        <path d="M386,109.323L386,431.151C386,441.009 379.263,449 370.952,449L156.048,449C147.737,449 141,441.009 141,431.151L141,55.849C141,45.991 147.737,38 156.048,38L320.639,38L386,109.323Z" style="fill:white;stroke:black;stroke-width:10.16px;"/>
+    </g>
+    <g transform="matrix(0.354937,0,0,0.194647,275.974067,12.103406)">
+        <path d="M141,38L386,449L197.406,449C166.254,449 141,402.95 141,346.143L141,38Z" style="fill:white;stroke:black;stroke-width:43.67px;"/>
+    </g>
+    <g transform="matrix(1.806749,0,0,1.806749,-88.451986,-69.718871)">
+        <g transform="matrix(97.723245,0,0,97.723245,227.339005,189)">
+        </g>
+        <text x="126px" y="189px" style="font-family:'Poppins-Regular', 'Poppins';font-size:97.723px;">&gt;_</text>
+    </g>
+    <g transform="matrix(0.993306,0,0,0.993306,-5.277575,226.827743)">
+        <g transform="matrix(97.723245,0,0,97.723245,387.507403,189)">
+        </g>
+        <text x="126px" y="189px" style="font-family:'Poppins-Bold', 'Poppins';font-weight:700;font-size:97.723px;">PGen</text>
+    </g>
+</svg>
