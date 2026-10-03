@@ -67,9 +67,13 @@ PDF page — with images, custom fonts, outlines, and per-cell text styling.
 ### Export
 
 - **Per-row PDF pages** — one page per data row.
+- **PDF bookmarks** — pick any column to generate one bookmark per page, so the
+  reader's outline panel becomes a table of contents.
 - **Live progress bar + console** — see each row render with timestamps.
 - **Cancellable** — stop mid-export if needed.
 - **Quality presets** — Draft / Standard / High, to trade speed against resolution.
+- **Auto quality scaling** — resolution is reduced automatically on very large exports
+  to keep memory under control.
 - **Canvas-2D rendering** — pages are drawn directly to a `<canvas>`, then embedded as JPEG.
   No DOM cloning, no SVG round-trip. 10-50× faster than typical DOM-to-image exports.
 
@@ -111,7 +115,9 @@ Serving locally avoids some CORS quirks with `file://` URLs when loading Google 
 4. **Bind columns** — click a column pill in the top bar to attach it to the
    selected field (or create a new field on the spot).
 5. **Style** — pick a font variant, set color, outline, bold/italic, alignment.
-6. **Export** — click **Export PDF**, choose quality, watch the progress, download the result.
+6. **Export** — click **Export PDF**. Choose a quality level and, optionally, a column
+   to use for PDF bookmarks. Watch the progress bar and console, then download your
+   multi-page PDF.
 
 ---
 
@@ -181,6 +187,18 @@ For each row:
 
 Because everything happens in Canvas 2D, export time scales linearly with rows and
 stays well under 100 ms per page for typical layouts.
+
+### PDF bookmarks
+
+When exporting, you can select a column from the spreadsheet to generate one PDF
+bookmark per page. This turns the outline panel of any PDF reader into a clickable
+table of contents — very useful when the file has hundreds of pages.
+
+Bookmarks are written natively into the PDF structure (no JavaScript, no external
+metadata), so they work in every standard reader: Chrome, Firefox, Adobe Reader,
+Preview, Okular, etc.
+
+Leave the field on **None** to export without bookmarks.
 
 ### Templates
 
