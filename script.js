@@ -129,6 +129,7 @@ const el = {
   modal: $('#modal'), modalTitle: $('#modalTitle'), modalSetup: $('#modalSetup'),
   modalProgress: $('#modalProgress'), modalRows: $('#modalRows'), modalSize: $('#modalSize'),
   pdfName: $('#pdfName'), pdfQuality: $('#pdfQuality'),
+  pdfBookmarkCol: $('#pdfBookmarkCol'),
   barFill: $('#barFill'), barLabel: $('#barLabel'),
   exportLog: $('#exportLog'), modalCancel: $('#modalCancel'),
   modalConfirm: $('#modalConfirm'), modalClose: $('#modalClose')
@@ -1318,6 +1319,16 @@ function openExportModal() {
   el.modalConfirm.classList.remove('hidden');
   el.modalCancel.textContent = 'Cancel';
   el.pdfName.value = f.name.replace(/\.[^.]+$/, '') || 'printgen-export';
+
+  // Populate bookmark column options
+  el.pdfBookmarkCol.innerHTML = '<option value="">None</option>';
+  for (const c of f.columns) {
+    const o = document.createElement('option');
+    o.value = c;
+    o.textContent = c;
+    el.pdfBookmarkCol.appendChild(o);
+  }
+
   el.modalRows.textContent = f.rows.length;
   el.modalSize.textContent = `${state.doc.w} × ${state.doc.h} px`;
   el.exportLog.innerHTML = '';
@@ -1378,6 +1389,11 @@ async function runExport() {
   await document.fonts.ready;
   await preloadAllImages();
 
+  const bookmarkCol = el.pdfBookmarkCol.value || null;
+  if (bookmarkCol) {
+    logLine(`<span class="dim">›</span> Bookmarks from <span class="ok">${escapeHtml(bookmarkCol)}</span>`);
+  }
+
   const t0 = performance.now();
   let lastYield = t0;
 
@@ -1400,6 +1416,14 @@ async function runExport() {
     if (i > 0) pdf.addPage();
     pdf.addImage(jpegBytes, 'JPEG', 0, 0, pdfW, pdfH);
 
+    if (bookmarkCol) {
+      const row = f.rows[i];
+      const title = String(row[bookmarkCol] ?? `Page ${i + 1}`).slice(0, 120);
+      try {
+        pdf.outline.add(null, title, { pageNumber: i + 1 });
+      } catch (e) { /* outline plugin unavailable — skip silently */ }
+    }
+    
     // Light UI update every row
     const pct = Math.round(((i + 1) / total) * 100);
     el.barFill.style.width = pct + '%';
