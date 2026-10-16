@@ -1,6 +1,6 @@
-/* ══════════════════════════════════════════════════════════
+/* 
    Print-Gen — application logic (rewrite)
-   ══════════════════════════════════════════════════════════ */
+    */
 (function () {
 'use strict';
 
@@ -132,7 +132,13 @@ const el = {
   pdfBookmarkCol: $('#pdfBookmarkCol'),
   barFill: $('#barFill'), barLabel: $('#barLabel'),
   exportLog: $('#exportLog'), modalCancel: $('#modalCancel'),
-  modalConfirm: $('#modalConfirm'), modalClose: $('#modalClose')
+  modalConfirm: $('#modalConfirm'), modalClose: $('#modalClose'),
+  sheetModal: $('#sheetModal'),
+  sheetModalFile: $('#sheetModalFile'),
+  sheetList: $('#sheetList'),
+  sheetModalConfirm: $('#sheetModalConfirm'),
+  sheetModalCancel: $('#sheetModalCancel'),
+  sheetModalClose: $('#sheetModalClose')
 };
 
 /* TEXT MEASUREMENT (offscreen canvas) */
@@ -828,16 +834,22 @@ function removeBox(b) {
 }
 
 /* FILES & DATA */
-function readDataFile(file) {
+function readWorkbook(file) {
   return new Promise((resolve, reject) => {
     const r = new FileReader();
     r.onerror = () => reject(r.error);
     r.onload = e => {
       try {
         const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
-        const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' });
-        if (!rows.length) return reject(new Error('Empty file'));
-        resolve({ name: file.name, rows, columns: Object.keys(rows[0]) });
+        const sheets = wb.SheetNames.map(name => {
+          const rows = XLSX.utils.sheet_to_json(wb.Sheets[name], { defval: '' });
+          return {
+            name,
+            rows,
+            columns: rows.length ? Object.keys(rows[0]) : []
+          };
+        });
+        resolve({ fileName: file.name, sheets });
       } catch (err) { reject(err); }
     };
     r.readAsArrayBuffer(file);
@@ -854,26 +866,137 @@ function readAsDataURL(file) {
 
 async function ingestFiles(fileList) {
   const arr = Array.from(fileList || []);
-  let firstNew = -1;
+  const sheetJobs = [];   // [{ fileName, sheets: [...] }]
+  const imageSrcs = [];
+
   for (const f of arr) {
     if (f.type.startsWith('image/')) {
-      addImageFromSrc(await readAsDataURL(f));
+      imageSrcs.push(await readAsDataURL(f));
       continue;
     }
     if (!/\.(xlsx|xls|csv)$/i.test(f.name)) continue;
     try {
-      const data = await readDataFile(f);
-      state.files.push(data);
-      if (firstNew < 0) firstNew = state.files.length - 1;
+      const wb = await readWorkbook(f);
+      const valid = wb.sheets.filter(s => s.rows.length);
+      if (!valid.length) { alert(`"${f.name}" has no data.`); continue; }
+      sheetJobs.push({ fileName: wb.fileName, sheets: valid });
     } catch (err) {
       alert(`Could not read "${f.name}": ${err.message}`);
     }
   }
-  if (state.files.length) {
-    buildFileList();
-    if (firstNew >= 0) switchFile(firstNew);
-    else buildColumns();
+
+  // Images first — no user choice needed
+  for (const src of imageSrcs) addImageFromSrc(src);
+
+  if (!sheetJobs.length) return;
+
+  // Fast path: single file, single sheet → no modal
+  const totalSheets = sheetJobs.reduce((n, j) => n + j.sheets.length, 0);
+  if (sheetJobs.length === 1 && totalSheets === 1) {
+    addSheets(sheetJobs[0].fileName, sheetJobs[0].sheets, 1);
+    return;
   }
+
+  // Ask the user
+  const picked = await askSheets(sheetJobs);
+  if (!picked) return;
+  for (const { fileName, sheets, siblingCount } of picked) {
+    addSheets(fileName, sheets, siblingCount);
+  }
+}
+
+function addSheets(fileName, sheets, siblingCount) {
+  const showSheet = siblingCount > 1;
+  let firstNew = -1;
+  for (const s of sheets) {
+    const label = showSheet ? `${fileName} › ${s.name}` : fileName;
+    state.files.push({
+      name: label,
+      rows: s.rows,
+      columns: s.columns,
+      sourceFile: fileName,
+      sheetName: s.name
+    });
+    if (firstNew < 0) firstNew = state.files.length - 1;
+  }
+  buildFileList();
+  if (firstNew >= 0) switchFile(firstNew);
+  toast(`${sheets.length} sheet${sheets.length !== 1 ? 's' : ''} imported`);
+}
+
+function askSheets(jobs) {
+  return new Promise(resolve => {
+    el.sheetList.innerHTML = '';
+    el.sheetModalFile.textContent = jobs.length === 1
+      ? jobs[0].fileName
+      : `${jobs.length} files`;
+
+    const checkboxes = [];
+
+    for (const job of jobs) {
+      if (jobs.length > 1) {
+        const h = document.createElement('div');
+        h.className = 'sheet-group-head';
+        h.textContent = job.fileName;
+        el.sheetList.appendChild(h);
+      }
+      for (const s of job.sheets) {
+        const row = document.createElement('label');
+        row.className = 'sheet-item';
+
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.checked = true;
+        cb.dataset.file = job.fileName;
+        cb.dataset.sheet = s.name;
+        checkboxes.push(cb);
+
+        const name = document.createElement('span');
+        name.className = 'sheet-name';
+        name.textContent = s.name;
+
+        const meta = document.createElement('span');
+        meta.className = 'sheet-meta';
+        meta.textContent = `${s.rows.length.toLocaleString()} rows`;
+
+        row.appendChild(cb);
+        row.appendChild(name);
+        row.appendChild(meta);
+        el.sheetList.appendChild(row);
+      }
+    }
+
+    const cleanup = () => {
+      el.sheetModal.classList.remove('open');
+      el.sheetModalConfirm.onclick = null;
+      el.sheetModalCancel.onclick = null;
+      el.sheetModalClose.onclick = null;
+    };
+
+    el.sheetModalConfirm.onclick = () => {
+      const chosen = checkboxes.filter(c => c.checked);
+      if (!chosen.length) { cleanup(); resolve(null); return; }
+      const result = [];
+      for (const cb of chosen) {
+        const job = jobs.find(j => j.fileName === cb.dataset.file);
+        const sheet = job.sheets.find(s => s.name === cb.dataset.sheet);
+        let entry = result.find(r => r.fileName === job.fileName);
+        if (!entry) {
+          entry = { fileName: job.fileName, sheets: [], siblingCount: job.sheets.length };
+          result.push(entry);
+        }
+        entry.sheets.push(sheet);
+      }
+      cleanup();
+      resolve(result);
+    };
+
+    const cancel = () => { cleanup(); resolve(null); };
+    el.sheetModalCancel.onclick = cancel;
+    el.sheetModalClose.onclick = cancel;
+
+    el.sheetModal.classList.add('open');
+  });
 }
 
 function buildFileList() {
@@ -1544,6 +1667,12 @@ function wireEvents() {
     openEditor(w * px, h * px, `${w}×${h} ${u}`);
   };
 
+    el.sheetModal.addEventListener('mousedown', e => {
+    if (e.target === el.sheetModal && el.sheetModalCancel.onclick) {
+      el.sheetModalCancel.onclick();
+    }
+  });
+  
   /* Editor top */
   $('#backBtn').onclick = goLanding;
   $('#addFieldBtn').onclick  = () => addFieldBox();
