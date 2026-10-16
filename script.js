@@ -907,9 +907,11 @@ async function ingestFiles(fileList) {
 
 function addSheets(fileName, sheets, siblingCount) {
   const showSheet = siblingCount > 1;
+  const baseFile = fileName.replace(/\.[^.]+$/, '');
   let firstNew = -1;
   for (const s of sheets) {
-    const label = showSheet ? `${fileName} › ${s.name}` : fileName;
+    const isGeneric = /^sheet\s*\d*$/i.test(s.name);
+    const label = (showSheet || !isGeneric) ? s.name : baseFile;
     state.files.push({
       name: label,
       rows: s.rows,
@@ -1010,7 +1012,9 @@ function buildFileList() {
     d.className = 'file-item' + (i === state.activeFile ? ' active' : '');
     d.innerHTML = `${svg('file')}<span class="file-name"></span><button class="file-del">${svg('x')}</button>`;
     d.querySelector('.file-name').textContent = f.name;
-    d.querySelector('.file-name').title = f.name;
+    d.querySelector('.file-name').title = f.sourceFile
+      ? `${f.sourceFile} › ${f.sheetName}`
+      : f.name;
     d.querySelector('.file-del').onclick = e => {
       e.stopPropagation();
       removeFile(i);
@@ -1672,7 +1676,7 @@ function wireEvents() {
       el.sheetModalCancel.onclick();
     }
   });
-  
+
   /* Editor top */
   $('#backBtn').onclick = goLanding;
   $('#addFieldBtn').onclick  = () => addFieldBox();
