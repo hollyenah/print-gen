@@ -118,8 +118,8 @@ Serving locally avoids some CORS quirks with `file://` URLs when loading Google 
 1. **Create a canvas** — pick a preset (A4, A3, Letter, 1080p, 720p, Square…) or enter
    your own size in `mm`, `cm`, `in`, `px`, or `pt`.
 2. **Add objects**
-   - **Field** — a text box pre-filled with a `{{ColumnName}}` placeholder.
-   - **Static** — an empty text box (still supports `{{ColumnName}}` placeholders).
+   - **Text Field** — an empty text box. Double-click to edit; type static text,
+     insert `{{ColumnName}}` placeholders, or mix both.
    - **Image** — a picture placed on the page.
    - **Shape** — a rectangle, square, triangle, or star.
 3. **Load data** — drop an `.xlsx` / `.csv` anywhere on the editor, or use the
