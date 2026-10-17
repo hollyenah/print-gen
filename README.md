@@ -1,11 +1,15 @@
 # Print-Gen
 
+<p align="center">
+  <img src="assets/Print-gen-logo.svg" alt="Print-Gen logo" width="120" height="120">
+</p>
+
 ![GitHub release (latest by date)](https://img.shields.io/github/v/release/hollyenah/print-gen?color=blue&label=version)
 > Design once. Generate hundreds.
 
 A lightweight, browser-based tool for batch-generating PDF pages from spreadsheets.
 Lay out a single page, drop in an `.xlsx` or `.csv`, and export every row as its own
-PDF page — with images, custom fonts, outlines, and per-cell text styling.
+PDF page — with images, custom fonts, outlines, and multi-variable text templates.
 
 **No backend. No uploads. No build step. Everything runs in your browser.**
 
@@ -22,6 +26,7 @@ PDF page — with images, custom fonts, outlines, and per-cell text styling.
 - [Features](#features)
 - [Getting started](#getting-started)
 - [Usage](#usage)
+- [Placeholder syntax](#placeholder-syntax)
 - [Keyboard shortcuts](#keyboard-shortcuts)
 - [Project structure](#project-structure)
 - [How it works](#how-it-works)
@@ -38,19 +43,24 @@ PDF page — with images, custom fonts, outlines, and per-cell text styling.
 
 ### Editor
 
-- **Visual canvas** — drag, resize, and delete text fields and images directly on the page.
-- **Inline text editing** — double-click a static text box and type straight into it.
-  `Esc` or click away to exit. Empty boxes are auto-removed.
-- **Field binding** — click a spreadsheet column to bind its value to the selected text field.
+- **Visual canvas** — drag, resize, and delete text boxes, images, and shapes directly on the page.
+- **Multi-variable text boxes** — a single text box can mix static text and **any number**
+  of `{{ColumnName}}` placeholders. Example:
+  `Bonjour {{Prénom}}, votre commande {{Réf}} est prête.`
+  Click a column in the sidebar to insert its placeholder at the caret, or append it
+  if you're not editing. Columns already used in the selected box are highlighted in teal.
+- **Inline text editing** — double-click any text box (field or static) to edit its raw
+  template, including `{{ColumnName}}` placeholders. `Esc` or click away to exit.
+  Empty boxes are auto-removed.
 - **Rich styling** — color, bold, italic, alignment, outline (thickness + color).
 - **Images** — resize with aspect-ratio lock (hold `Shift` to distort freely).
+- **Shapes** — rectangle, square, triangle, and star, with independent fill color,
+  border color, and border width.
 - **Z-order** — bring to front / back / move up / down one step.
 - **Copy / paste / cut / duplicate** — `Ctrl+C`, `Ctrl+V`, `Ctrl+X`, `Ctrl+D`.
 - **RTL support** — automatic Arabic / Hebrew detection, per-box.
 - **Zoom** — buttons, `Ctrl/Cmd + scroll` centered on the cursor, fit-to-screen.
 - **Dark mode** — respects `prefers-color-scheme` on first run, then remembers your choice.
-- **Shapes** — rectangle, square, triangle, and star, with independent fill color,
-  border color, and border width.
 
 ### Data
 
@@ -60,9 +70,10 @@ PDF page — with images, custom fonts, outlines, and per-cell text styling.
 
 ### Template storage
 
-- Save the entire layout — objects, positions, styles, images, column bindings — as a template.
+- Save the entire layout — objects, positions, styles, images, `{{}}` templates — as a template.
 - Reload with one click from the landing page.
 - Stored in `localStorage`; nothing is uploaded anywhere.
+- Templates saved with older versions (pre-`{{}}` format) are auto-migrated on load.
 
 ### Export
 
@@ -107,19 +118,20 @@ Serving locally avoids some CORS quirks with `file://` URLs when loading Google 
 1. **Create a canvas** — pick a preset (A4, A3, Letter, 1080p, 720p, Square…) or enter
    your own size in `mm`, `cm`, `in`, `px`, or `pt`.
 2. **Add objects**
-   - **Field** — a text box that binds to a spreadsheet column.
-   - **Static** — fixed text you type directly into the canvas.
+   - **Field** — a text box pre-filled with a `{{ColumnName}}` placeholder.
+   - **Static** — an empty text box (still supports `{{ColumnName}}` placeholders).
    - **Image** — a picture placed on the page.
+   - **Shape** — a rectangle, square, triangle, or star.
 3. **Load data** — drop an `.xlsx` / `.csv` anywhere on the editor, or use the
    **+** button in the *Data files* panel.
-4. **Bind columns** — click a column pill in the top bar to attach it to the
-   selected field (or create a new field on the spot).
+4. **Insert columns** — select a text box, then click any column in the **left sidebar**.
+   The `{{ColumnName}}` placeholder is inserted at the cursor (or appended at the end
+   if you're not editing). Columns already present in the selected box are highlighted
+   in teal. If no text box is selected, clicking a column creates a new field bound to it.
 5. **Style** — pick a font variant, set color, outline, bold/italic, alignment.
 6. **Export** — click **Export PDF**. Choose a quality level and, optionally, a column
    to use for PDF bookmarks. Watch the progress bar and console, then download your
    multi-page PDF.
-
----
 
 ## Keyboard shortcuts
 
@@ -128,7 +140,7 @@ Serving locally avoids some CORS quirks with `file://` URLs when loading Google 
 | Delete selected object | `Del` / `Backspace` |
 | Duplicate selected object | `Ctrl/Cmd + D` |
 | Copy / Cut / Paste | `Ctrl/Cmd + C` / `X` / `V` |
-| Edit static text inline | `F2` or double-click |
+| Edit text box template | `F2` or double-click |
 | Exit inline edit | `Esc` |
 | Move object by 1 px | `Arrow keys` |
 | Move object by 10 px | `Shift + Arrow keys` |
@@ -163,6 +175,16 @@ The **page** is a `<div>` sized in CSS pixels. Every object is an absolutely-pos
 `.pg-obj` element. Editing state (`state.boxes`) is the single source of truth; the DOM
 is just a projection of it.
 
+### Text templates
+
+Each text box stores a single string (`template`), e.g. `Bonjour {{Prénom}}, votre
+commande {{Réf}} est prête.` At render time, `textFor(box)` substitutes every
+`{{ColumnName}}` with the current row's value and returns the resolved string, which
+is then auto-fitted and drawn.
+
+The **raw template** is shown only while editing (double-click). Everywhere else —
+preview, export, saved template — the **resolved text** is what you see.
+
 ### Auto-fit text
 
 Each text box finds the largest font size that fits both dimensions:
@@ -178,11 +200,12 @@ This keeps text visually identical between the editor preview and the exported P
 
 For each row:
 
-1. Update the bound fields' text and re-fit only those boxes.
+1. Resolve every text box's template against the current row and re-fit the affected boxes.
 2. Create an offscreen `<canvas>` at `docWidth × scale`, `docHeight × scale`.
 3. Draw the background, then each object in z-order:
    - **Text** — `ctx.fillText` + optional `ctx.strokeText` with round joins.
    - **Images** — `ctx.drawImage` at the box's geometry.
+   - **Shapes** — path fill + stroke.
 4. Encode as JPEG (`quality: 0.92`), embed into the jsPDF document.
 
 Because everything happens in Canvas 2D, export time scales linearly with rows and
@@ -204,6 +227,10 @@ Leave the field on **None** to export without bookmarks.
 
 Saved as JSON in `localStorage`. Images are inlined as data URLs, so a template with
 a large photo can get big — but it works completely offline and survives page reloads.
+
+Older templates saved before the `{{ColumnName}}` rewrite (using the legacy
+`colKey` / `staticText` fields) are automatically migrated to the new template
+format the first time they are loaded.
 
 ---
 
@@ -251,8 +278,12 @@ the final file.
 - Arabic / RTL shaping depends on the browser's text engine; results may vary on
   older Safari versions.
 - Export is raster-based (JPEG), not vector. Text is not selectable in the generated PDF.
+- `{{ }}` is reserved syntax. There is currently no escape sequence to print literal
+  `{{` or `}}` in a text box — use a dummy column if you really need them.
 - Google Fonts are loaded from the CDN by default — see [Going fully offline](#going-fully-offline)
   if you need a zero-network setup.
+- Templates saved with versions ≤ v3 (`colKey` / `staticText` format) are auto-migrated
+  to the new `{{ColumnName}}` template format when loaded.
 
 ---
 

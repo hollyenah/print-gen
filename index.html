@@ -1,4 +1,4 @@
-<!DOCTYPE html> <!-- v3 -->
+<!DOCTYPE html> <!-- v4 -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -102,18 +102,18 @@
     <div class="doc-badge" id="docBadge">—</div>
     <span class="divider"></span>
 
-  <button class="btn" id="addFieldBtn"><i data-icon="text"></i><span>Field</span></button>
-  <button class="btn" id="addStaticBtn"><i data-icon="staticText"></i><span>Static</span></button>
-  <button class="btn" id="addImageBtn"><i data-icon="image"></i><span>Image</span></button>
-  <div class="menu-wrap">
-    <button class="btn" id="addShapeBtn"><i data-icon="rect"></i><span>Shape</span></button>
-    <div class="menu" id="shapeMenu">
-      <button class="menu-item" data-shape="rect"><i data-icon="rect"></i><span>Rectangle</span></button>
-      <button class="menu-item" data-shape="square"><i data-icon="square"></i><span>Square</span></button>
-      <button class="menu-item" data-shape="triangle"><i data-icon="triangle"></i><span>Triangle</span></button>
-      <button class="menu-item" data-shape="star"><i data-icon="star"></i><span>Star</span></button>
+    <button class="btn" id="addFieldBtn"><i data-icon="text"></i><span>Field</span></button>
+    <button class="btn" id="addStaticBtn"><i data-icon="staticText"></i><span>Static</span></button>
+    <button class="btn" id="addImageBtn"><i data-icon="image"></i><span>Image</span></button>
+    <div class="menu-wrap">
+      <button class="btn" id="addShapeBtn"><i data-icon="rect"></i><span>Shape</span></button>
+      <div class="menu" id="shapeMenu">
+        <button class="menu-item" data-shape="rect"><i data-icon="rect"></i><span>Rectangle</span></button>
+        <button class="menu-item" data-shape="square"><i data-icon="square"></i><span>Square</span></button>
+        <button class="menu-item" data-shape="triangle"><i data-icon="triangle"></i><span>Triangle</span></button>
+        <button class="menu-item" data-shape="star"><i data-icon="star"></i><span>Star</span></button>
+      </div>
     </div>
-  </div>
 
     <div class="topbar-right">
       <button class="icon-btn theme-btn" id="themeEditor" data-icon="moon" title="Toggle theme"></button>
@@ -172,12 +172,13 @@
           <span>Columns</span>
           <span class="counter" id="colCount"></span>
         </div>
+        <div class="col-hint" id="colHint">
+          Click to insert <code>{{column}}</code> at cursor
+        </div>
         <div class="col-list" id="colList">
           <div class="empty-note">No columns yet</div>
         </div>
       </div>
-
-      <div class="side-block grow" id="recordsBlock">
 
       <div class="side-block grow" id="recordsBlock">
         <div class="side-head">

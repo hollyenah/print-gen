@@ -1,5 +1,5 @@
 /* 
-   Print-Gen — application logic (rewrite)
+   Print-Gen — application logic (v4)
     */
 (function () {
 'use strict';
@@ -61,8 +61,6 @@ const PRESETS = [
   { name: 'Square',       w: 1080, h: 1080, unit: 'px' }
 ];
 
-/* Font catalog — every family declares the weights it actually ships.
-   Google = loaded from fonts.googleapis.com at <head>; System = OS fonts. */
 const FONT_FAMILIES = [
   { family: 'Inter',           group: 'Sans-serif', weights: [400,500,600,700,900], italic: true },
   { family: 'Roboto',          group: 'Sans-serif', weights: [300,400,500,700,900], italic: true },
@@ -118,8 +116,9 @@ const el = {
   landing: $('#landing'), editor: $('#editor'),
   page: $('#page'), stage: $('#canvasStage'), scroll: $('#canvasScroll'),
   presetGrid: $('#presetGrid'), templateList: $('#templateList'), tplCount: $('#tplCount'),
-  docBadge: $('#docBadge'), colList: $('#colList'), colCount: $('#colCount'), stylebar: $('#stylebar'),
-  sbText: $('#sbText'),
+  docBadge: $('#docBadge'),
+  colList: $('#colList'), colCount: $('#colCount'), colHint: $('#colHint'),
+  stylebar: $('#stylebar'), sbText: $('#sbText'),
   fontSelect: $('#fontSelect'), textColor: $('#textColor'),
   strokeW: $('#strokeW'), strokeColor: $('#strokeColor'),
   boldBtn: $('#boldBtn'), italicBtn: $('#italicBtn'), alignBtn: $('#alignBtn'),
@@ -169,7 +168,6 @@ function wrapText(ctx, text, maxW) {
 const _fitCache = new Map();
 const FIT_CACHE_MAX = 4000;
 
-/* Find the largest font size where `text` fits inside (w × h). */
 function fitText(b, text) {
   if (!text) { b._fitSize = 12; return 12; }
   const W = b.w, H = b.h;
@@ -179,7 +177,6 @@ function fitText(b, text) {
   const hit = _fitCache.get(key);
   if (hit !== undefined) { b._fitSize = hit; return hit; }
 
-  // Longest word = hard lower bound for the font size
   const words = text.split(/\s+/).filter(Boolean);
   let maxWordRatio = 0;
   measure.font = fontString(b, 100);
@@ -203,7 +200,6 @@ function fitText(b, text) {
   b._fitSize = best;
   if (_fitCache.size >= FIT_CACHE_MAX) _fitCache.clear();
   _fitCache.set(key, best);
-  b._fitSize = best;
   return best;
 }
 
@@ -282,7 +278,6 @@ function renderTemplates() {
 }
 
 function createDoc(w, h, name) {
-  // Wipe everything
   state.boxes.forEach(b => b.el && b.el.remove());
   state.boxes = [];
   state.selectedId = null;
@@ -352,8 +347,7 @@ function newTextBox(partial) {
     type: 'text',
     x: 60, y: 60, w: 320, h: 100,
     z: ++state.zTop,
-    colKey: null,
-    staticText: '',
+    template: '',                  // "Bonjour {{Prénom}}, {{Montant}} €"
     family: 'Inter',
     weight: 400,
     italic: false,
@@ -390,15 +384,65 @@ function newShapeBox(shape, partial) {
 function getBox(id) { return state.boxes.find(b => b.id === id); }
 function getSelected() { return state.selectedId ? getBox(state.selectedId) : null; }
 
-/* Resolve the visible text of a text box for the current row. */
+/* ─────────── TEMPLATE HELPERS ─────────── */
+const PLACEHOLDER_RE = /\{\{([^{}]+)\}\}/g;
+
+function resolveTemplate(template, row) {
+  if (!template) return '';
+  return template.replace(PLACEHOLDER_RE, (_, k) => {
+    const key = k.trim();
+    const v = row ? row[key] : null;
+    return v == null ? '' : String(v);
+  });
+}
+
+function readEditableText(node) {
+  const raw = node.innerText != null ? node.innerText : (node.textContent || '');
+  return raw.replace(/\r\n?/g, '\n');
+}
+
+function insertPlaceholder(b, colName) {
+  const placeholder = `{{${colName}}}`;
+
+  if (b.editing && b.textEl) {
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount > 0 && b.textEl.contains(sel.anchorNode)) {
+      const range = sel.getRangeAt(0);
+      range.deleteContents();
+      const node = document.createTextNode(placeholder);
+      range.insertNode(node);
+      range.setStartAfter(node);
+      range.setEndAfter(node);
+      sel.removeAllRanges();
+      sel.addRange(range);
+      b.template = readEditableText(b.textEl);
+      updateTextDom(b);
+      buildColumns();
+      return;
+    }
+  }
+
+  const needsSpace = b.template && !/\s$/.test(b.template);
+  b.template = (b.template || '') + (needsSpace ? ' ' : '') + placeholder;
+
+  if (b.editing && b.textEl) {
+    b.textEl.textContent = b.template;
+    const range = document.createRange();
+    range.selectNodeContents(b.textEl);
+    range.collapse(false);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
+  updateTextDom(b);
+  buildColumns();
+}
+
 function textFor(b) {
   if (b.type !== 'text') return '';
-  if (b.colKey && state.files[state.activeFile]) {
-    const row = state.files[state.activeFile].rows[state.row] || {};
-    const v = row[b.colKey];
-    return v == null ? '' : String(v);
-  }
-  return b.staticText || '';
+  const f = state.files[state.activeFile];
+  const row = f ? (f.rows[state.row] || {}) : {};
+  return resolveTemplate(b.template, row);
 }
 
 /* DOM RENDERING */
@@ -457,22 +501,12 @@ function renderBox(b) {
   return div;
 }
 
-function updateBoxDom(b) {
-  if (!b.el) return;
-  const s = b.el.style;
-  s.left   = b.x + 'px';
-  s.top    = b.y + 'px';
-  s.width  = b.w + 'px';
-  s.height = b.h + 'px';
-  s.zIndex = b.z;
-}
-
 function updateTextDom(b) {
   if (b.type !== 'text' || !b.textEl) return;
   const t = b.textEl;
-  const text = textFor(b);
-  const size = fitText(b, text);
-  const rtl = ARABIC_RE.test(text);
+  const visible = b.editing ? (b.template || '') : textFor(b);
+  const size = fitText(b, visible);
+  const rtl = ARABIC_RE.test(visible);
 
   let align = b.align;
   if (rtl) {
@@ -480,7 +514,8 @@ function updateTextDom(b) {
     else if (align === 'right') align = 'left';
   }
 
-  if (t.textContent !== text) t.textContent = text;
+  if (!b.editing && t.textContent !== visible) t.textContent = visible;
+
   t.style.fontFamily = `"${b.family}", sans-serif`;
   t.style.fontWeight = String(b.weight);
   t.style.fontStyle  = b.italic ? 'italic' : 'normal';
@@ -527,8 +562,6 @@ function showStylebar(b) {
   }
 
   el.sbText.style.display = 'flex';
-
-  // Show/hide text-only controls
   const isText = b.type === 'text';
   el.sbText.querySelectorAll('.sb-text-only').forEach(x => {
     x.classList.toggle('hidden', !isText);
@@ -560,16 +593,17 @@ function wireBox(b) {
   b.el.addEventListener('mousedown', e => {
     if (e.target.classList.contains('pg-handle')) return;
     if (e.target.classList.contains('pg-del')) return;
-    if (b.editing) return;                       // contenteditable mode
+    if (b.editing) return;
     if (e.button !== 0) return;
     e.preventDefault();
     selectBox(b);
     startDrag(e, b);
   });
 
+  /* Double-click → edit text boxes */
   b.el.addEventListener('dblclick', e => {
     if (b.type !== 'text') return;
-    if (b.colKey) return;                        // bound fields: not editable
+    if (b.editing) return;
     e.preventDefault();
     enterEditMode(b);
   });
@@ -607,9 +641,6 @@ function startDrag(e, b) {
 function startResize(e, b, dir) {
   const sx = e.clientX, sy = e.clientY;
   const ox = b.x, oy = b.y, ow = b.w, oh = b.h, z = state.zoom;
-
-  // Aspect ratio lock: default on for images, off for text.
-  // Hold Shift to invert.
   const wantsLock = b.type === 'image' ? !e.shiftKey : e.shiftKey;
   const isCorner = dir === 'nw' || dir === 'ne' || dir === 'sw' || dir === 'se';
   const lock = wantsLock && isCorner;
@@ -653,29 +684,30 @@ function startResize(e, b, dir) {
 
 /* INLINE EDIT */
 function enterEditMode(b) {
-  if (b.type !== 'text' || b.colKey || b.editing) return;
+  if (b.type !== 'text' || b.editing) return;
   b.editing = true;
   b.el.classList.add('editing');
   const t = b.textEl;
+  t.textContent = b.template || '';
   t.contentEditable = 'true';
+  updateTextDom(b);
 
-  // Move caret at end + select all so first keystroke replaces
   requestAnimationFrame(() => {
     t.focus();
     const range = document.createRange();
     range.selectNodeContents(t);
+    range.collapse(false);
     const sel = window.getSelection();
     sel.removeAllRanges();
     sel.addRange(range);
   });
 
   const onInput = () => {
-    b.staticText = t.textContent || '';
+    b.template = readEditableText(t);
     updateTextDom(b);
   };
   t.addEventListener('input', onInput);
 
-  // Escape to exit
   const onKey = ev => {
     if (ev.key === 'Escape') { ev.preventDefault(); exitEditMode(b); }
   };
@@ -689,19 +721,17 @@ function enterEditMode(b) {
 
 function exitEditMode(b) {
   if (!b || !b.editing) return;
+  const t = b.textEl;
+  b.template = readEditableText(t);
   b.editing = false;
   b.el.classList.remove('editing');
-  const t = b.textEl;
-  b.staticText = t.textContent || '';
   t.contentEditable = 'false';
   b._editCleanup && b._editCleanup();
   b._editCleanup = null;
-  // Empty static box? Auto-remove so we don't leave orphans behind.
-  if (!b.colKey && !b.staticText.trim()) {
-    removeBox(b);
-    return;
-  }
+
+  if (!b.template.trim()) { removeBox(b); return; }
   updateTextDom(b);
+  buildColumns();
 }
 
 /* CLIPBOARD */
@@ -724,9 +754,7 @@ function copySelected() {
 function pasteClipboard() {
   if (!state.clipboard) return;
   const data = Object.assign({}, state.clipboard);
-  const b = data.type === 'image'
-    ? newImageBox(data.src, data)
-    : newTextBox(data);
+  const b = data.type === 'image' ? newImageBox(data.src, data) : newTextBox(data);
   b.x += 24; b.y += 24;
   b.z = ++state.zTop;
   if (b.type === 'image') {
@@ -749,9 +777,7 @@ function duplicateSelected() {
   const b = getSelected();
   if (!b) return;
   const data = cloneBoxData(b);
-  const copy = data.type === 'image'
-    ? newImageBox(data.src, data)
-    : newTextBox(data);
+  const copy = data.type === 'image' ? newImageBox(data.src, data) : newTextBox(data);
   copy.x = b.x + 20; copy.y = b.y + 20;
   copy.z = ++state.zTop;
   if (copy.type === 'image') {
@@ -766,7 +792,7 @@ function duplicateSelected() {
 
 /* ADD / REMOVE */
 function addFieldBox(colKey) {
-  const b = newTextBox({ colKey: colKey || null, staticText: colKey ? null : '' });
+  const b = newTextBox({ template: colKey ? `{{${colKey}}}` : '' });
   state.boxes.push(b);
   renderBox(b);
   selectBox(b);
@@ -778,7 +804,6 @@ function addStaticBox() {
   state.boxes.push(b);
   renderBox(b);
   selectBox(b);
-  // Enter edit mode straight away
   requestAnimationFrame(() => enterEditMode(b));
   return b;
 }
@@ -843,11 +868,7 @@ function readWorkbook(file) {
         const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
         const sheets = wb.SheetNames.map(name => {
           const rows = XLSX.utils.sheet_to_json(wb.Sheets[name], { defval: '' });
-          return {
-            name,
-            rows,
-            columns: rows.length ? Object.keys(rows[0]) : []
-          };
+          return { name, rows, columns: rows.length ? Object.keys(rows[0]) : [] };
         });
         resolve({ fileName: file.name, sheets });
       } catch (err) { reject(err); }
@@ -866,7 +887,7 @@ function readAsDataURL(file) {
 
 async function ingestFiles(fileList) {
   const arr = Array.from(fileList || []);
-  const sheetJobs = [];   // [{ fileName, sheets: [...] }]
+  const sheetJobs = [];
   const imageSrcs = [];
 
   for (const f of arr) {
@@ -885,19 +906,15 @@ async function ingestFiles(fileList) {
     }
   }
 
-  // Images first — no user choice needed
   for (const src of imageSrcs) addImageFromSrc(src);
-
   if (!sheetJobs.length) return;
 
-  // Fast path: single file, single sheet → no modal
   const totalSheets = sheetJobs.reduce((n, j) => n + j.sheets.length, 0);
   if (sheetJobs.length === 1 && totalSheets === 1) {
     addSheets(sheetJobs[0].fileName, sheetJobs[0].sheets, 1);
     return;
   }
 
-  // Ask the user
   const picked = await askSheets(sheetJobs);
   if (!picked) return;
   for (const { fileName, sheets, siblingCount } of picked) {
@@ -929,12 +946,9 @@ function addSheets(fileName, sheets, siblingCount) {
 function askSheets(jobs) {
   return new Promise(resolve => {
     el.sheetList.innerHTML = '';
-    el.sheetModalFile.textContent = jobs.length === 1
-      ? jobs[0].fileName
-      : `${jobs.length} files`;
+    el.sheetModalFile.textContent = jobs.length === 1 ? jobs[0].fileName : `${jobs.length} files`;
 
     const checkboxes = [];
-
     for (const job of jobs) {
       if (jobs.length > 1) {
         const h = document.createElement('div');
@@ -1012,13 +1026,8 @@ function buildFileList() {
     d.className = 'file-item' + (i === state.activeFile ? ' active' : '');
     d.innerHTML = `${svg('file')}<span class="file-name"></span><button class="file-del">${svg('x')}</button>`;
     d.querySelector('.file-name').textContent = f.name;
-    d.querySelector('.file-name').title = f.sourceFile
-      ? `${f.sourceFile} › ${f.sheetName}`
-      : f.name;
-    d.querySelector('.file-del').onclick = e => {
-      e.stopPropagation();
-      removeFile(i);
-    };
+    d.querySelector('.file-name').title = f.sourceFile ? `${f.sourceFile} › ${f.sheetName}` : f.name;
+    d.querySelector('.file-del').onclick = e => { e.stopPropagation(); removeFile(i); };
     d.onclick = () => switchFile(i);
     el.fileList.appendChild(d);
   });
@@ -1054,33 +1063,36 @@ function buildColumns() {
   if (!f) {
     el.colList.innerHTML = '<div class="empty-note">No columns yet</div>';
     if (el.colCount) el.colCount.textContent = '';
+    if (el.colHint) el.colHint.classList.remove('visible');
     return;
   }
 
   if (el.colCount) el.colCount.textContent = f.columns.length;
+  if (el.colHint) el.colHint.classList.toggle('visible', f.columns.length > 0);
 
-  // Which column is currently bound to the selected text box?
   const sel = getSelected();
-  const boundKey = sel && sel.type === 'text' ? sel.colKey : null;
+  const usedCols = new Set();
+  if (sel && sel.type === 'text' && sel.template) {
+    for (const m of sel.template.matchAll(PLACEHOLDER_RE)) {
+      usedCols.add(m[1].trim());
+    }
+  }
 
   for (const c of f.columns) {
-    const b = document.createElement('button');
-    b.className = 'col-item' + (c === boundKey ? ' bound' : '');
-    b.textContent = c;
-    b.title = 'Bind to selected field — or create a new one';
-    b.onclick = () => {
+    const btn = document.createElement('button');
+    btn.className = 'col-item' + (usedCols.has(c) ? ' bound' : '');
+    btn.textContent = c;
+    btn.title = `Insert {{${c}}} — or create a new field`;
+    btn.onmousedown = e => {
       const s = getSelected();
-      if (s && s.type === 'text') {
-        s.colKey = c;
-        s.staticText = null;
-        updateTextDom(s);
-        showStylebar(s);
-        buildColumns();
-      } else {
-        addFieldBox(c);
-      }
+      if (s && s.editing) e.preventDefault();
     };
-    el.colList.appendChild(b);
+    btn.onclick = () => {
+      const s = getSelected();
+      if (s && s.type === 'text') insertPlaceholder(s, c);
+      else addFieldBox(c);
+    };
+    el.colList.appendChild(btn);
   }
 }
 
@@ -1096,7 +1108,6 @@ function buildRows() {
 
   const total = f.rows.length;
 
-  // Small lists: render normally (no virtualization overhead)
   if (total <= 100) {
     const frag = document.createDocumentFragment();
     f.rows.forEach((row, i) => frag.appendChild(makeRowItem(row, i)));
@@ -1105,9 +1116,7 @@ function buildRows() {
     return;
   }
 
-  // Large lists: virtualize
   el.rowList.style.position = 'relative';
-
   const spacer = document.createElement('div');
   spacer.style.cssText = `height:${total * ROW_H}px;width:1px;pointer-events:none;`;
   el.rowList.appendChild(spacer);
@@ -1125,17 +1134,12 @@ function buildRows() {
     viewport.style.transform = `translateY(${first * ROW_H}px)`;
     viewport.innerHTML = '';
     const frag = document.createDocumentFragment();
-    for (let i = first; i < last; i++) {
-      frag.appendChild(makeRowItem(f.rows[i], i));
-    }
+    for (let i = first; i < last; i++) frag.appendChild(makeRowItem(f.rows[i], i));
     viewport.appendChild(frag);
   };
 
   _rowVirtualState = { render, total, viewport };
-
-  el.rowList.onscroll = () => {
-    if (_rowVirtualState) _rowVirtualState.render();
-  };
+  el.rowList.onscroll = () => { if (_rowVirtualState) _rowVirtualState.render(); };
   render();
   updateCounter();
 }
@@ -1158,7 +1162,6 @@ function goRow(i) {
   state.row = Math.max(0, Math.min(f.rows.length - 1, i));
 
   if (_rowVirtualState) {
-    // Bring the active row into view before re-rendering
     const target = state.row * ROW_H;
     const st = el.rowList.scrollTop;
     const h  = el.rowList.clientHeight;
@@ -1182,7 +1185,6 @@ function updateCounter() {
 }
 
 function refreshAllText() {
-  // Only re-fit text for field-bound boxes; static text doesn't change.
   for (const b of state.boxes) {
     if (b.type === 'text') updateTextDom(b);
   }
@@ -1215,9 +1217,13 @@ function loadTemplate(t) {
   openEditor(t.w, t.h, t.docName || t.name, true);
   requestAnimationFrame(() => {
     for (const bd of t.boxes) {
-      const b = bd.type === 'image'
-        ? newImageBox(bd.src, bd)
-        : newTextBox(bd);
+      if (bd.type === 'text' && bd.template === undefined) {
+        bd.template = bd.colKey ? `{{${bd.colKey}}}` : (bd.staticText || '');
+        delete bd.colKey;
+        delete bd.staticText;
+      }
+
+      const b = bd.type === 'image' ? newImageBox(bd.src, bd) : newTextBox(bd);
       b.z = bd.z;
       state.zTop = Math.max(state.zTop, bd.z);
       if (b.type === 'image') {
@@ -1263,7 +1269,6 @@ function shapePoints(shape, w, h, strokeW) {
     return { kind: 'poly', points: pts };
   }
 
-  // rect / square
   return { kind: 'rect', x: inset, y: inset, w: iw, h: ih };
 }
 
@@ -1313,7 +1318,7 @@ function drawShapeBox(ctx, b) {
 }
 
 
-/* EXPORT (Canvas 2D — fast) */
+/* EXPORT */
 function drawTextBox(ctx, b, text) {
   if (!text) return;
   const size = b._fitSize || fitText(b, text);
@@ -1374,25 +1379,6 @@ async function preloadAllImages() {
   return Promise.all(promises);
 }
 
-function rasterizeRow(scale) {
-  const canvas = document.createElement('canvas');
-  canvas.width  = Math.max(1, Math.round(state.doc.w * scale));
-  canvas.height = Math.max(1, Math.round(state.doc.h * scale));
-  const ctx = canvas.getContext('2d');
-  ctx.fillStyle = '#ffffff';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  ctx.scale(scale, scale);
-
-  // z-order
-  const sorted = state.boxes.slice().sort((a, b) => a.z - b.z);
-  for (const b of sorted) {
-    if (b.type === 'image') drawImageBox(ctx, b);
-    else if (b.type === 'shape') drawShapeBox(ctx, b);
-    else drawTextBox(ctx, b, textFor(b));
-  }
-  return canvas.toDataURL('image/jpeg', 0.92);
-}
-
 async function rasterizeRowBlob(scale) {
   const canvas = document.createElement('canvas');
   canvas.width  = Math.max(1, Math.round(state.doc.w * scale));
@@ -1409,10 +1395,7 @@ async function rasterizeRowBlob(scale) {
     else drawTextBox(ctx, b, textFor(b));
   }
 
-  // Async encode — does not block the JS thread on most engines
-  const blob = await new Promise(res =>
-    canvas.toBlob(res, 'image/jpeg', 0.92)
-  );
+  const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.92));
   const buf = await blob.arrayBuffer();
   return new Uint8Array(buf);
 }
@@ -1436,7 +1419,6 @@ function openExportModal() {
   if (!f) { alert('Load a spreadsheet first.'); return; }
   if (!state.boxes.length) { alert('Add at least one object to the page first.'); return; }
 
-  // Warring message
   if (f.rows.length > 5000) {
     if (!confirm(`${f.rows.length} records will be exported. This may take several minutes and use significant memory. Continue?`)) return;
   }
@@ -1447,7 +1429,6 @@ function openExportModal() {
   el.modalCancel.textContent = 'Cancel';
   el.pdfName.value = f.name.replace(/\.[^.]+$/, '') || 'printgen-export';
 
-  // Populate bookmark column options
   el.pdfBookmarkCol.innerHTML = '<option value="">None</option>';
   for (const c of f.columns) {
     const o = document.createElement('option');
@@ -1492,12 +1473,10 @@ async function runExport() {
   const savedRow = state.row;
   const total = f.rows.length;
 
-  // ── Auto-pick scale if the user has many rows (avoids OOM) ──
   let scale = parseFloat(el.pdfQuality.value) || 2;
   if (total > 3000)      scale = Math.min(scale, 1);
   else if (total > 1500) scale = Math.min(scale, 1.5);
 
-  // ── PDF setup ──
   const wPt = state.doc.w * 0.75;
   const hPt = state.doc.h * 0.75;
   const orientation = wPt > hPt ? 'landscape' : 'portrait';
@@ -1529,7 +1508,7 @@ async function runExport() {
 
     state.row = i;
     for (const b of state.boxes) {
-      if (b.type === 'text' && b.colKey) fitText(b, textFor(b));
+      if (b.type === 'text') fitText(b, textFor(b));
     }
 
     let jpegBytes;
@@ -1548,10 +1527,9 @@ async function runExport() {
       const title = String(row[bookmarkCol] ?? `Page ${i + 1}`).slice(0, 120);
       try {
         pdf.outline.add(null, title, { pageNumber: i + 1 });
-      } catch (e) { /* outline plugin unavailable — skip silently */ }
+      } catch (e) {}
     }
-    
-    // Light UI update every row
+
     const pct = Math.round(((i + 1) / total) * 100);
     el.barFill.style.width = pct + '%';
     el.barLabel.textContent = `${i + 1} / ${total}`;
@@ -1561,7 +1539,6 @@ async function runExport() {
     const stamp = new Date().toLocaleTimeString('en-GB', { hour12: false });
     logLine(`<span class="dim">${stamp}</span> <span class="ok">✓</span> ${i + 1}/${total} — ${escapeHtml(label)}`);
 
-    // ── Yield to the event loop every ~40ms so the tab stays alive ──
     if (performance.now() - lastYield > 40) {
       await new Promise(r => setTimeout(r, 0));
       lastYield = performance.now();
@@ -1610,7 +1587,7 @@ function toast(msg) {
       'position:fixed;left:50%;bottom:28px;transform:translateX(-50%) translateY(8px);' +
       'background:#1f1e1c;color:#fff;padding:10px 18px;border-radius:99px;font-size:13px;' +
       'font-weight:500;box-shadow:0 8px 24px rgba(0,0,0,.25);opacity:0;pointer-events:none;' +
-      'transition:opacity .18s,transform .18s;z-index:500;';
+      'transition:opacity .18s,transform .18s;z-index:500;user-select:none;';
     document.body.appendChild(t);
   }
   t.textContent = msg;
@@ -1671,7 +1648,7 @@ function wireEvents() {
     openEditor(w * px, h * px, `${w}×${h} ${u}`);
   };
 
-    el.sheetModal.addEventListener('mousedown', e => {
+  el.sheetModal.addEventListener('mousedown', e => {
     if (e.target === el.sheetModal && el.sheetModalCancel.onclick) {
       el.sheetModalCancel.onclick();
     }
@@ -1679,10 +1656,13 @@ function wireEvents() {
 
   /* Editor top */
   $('#backBtn').onclick = goLanding;
-  $('#addFieldBtn').onclick  = () => addFieldBox();
+  $('#addFieldBtn').onclick = () => {
+    addFieldBox();
+    toast('Click a column in the sidebar to insert {{column}}');
+  };
   $('#addStaticBtn').onclick = () => addStaticBox();
   $('#addImageBtn').onclick  = () => el.imgInput.click();
-    // Shape dropdown menu
+
   const shapeMenu = document.getElementById('shapeMenu');
   const shapeBtn  = document.getElementById('addShapeBtn');
   shapeBtn.onclick = e => {
@@ -1729,40 +1709,23 @@ function wireEvents() {
   };
   el.textColor.oninput = () => {
     const b = getSelected(); if (!b) return;
-    if (b.type === 'text') {
-      b.color = el.textColor.value;
-      updateTextDom(b);
-    } else if (b.type === 'shape') {
-      b.fill = el.textColor.value;
-      updateShapeDom(b);
-    }
+    if (b.type === 'text') { b.color = el.textColor.value; updateTextDom(b); }
+    else if (b.type === 'shape') { b.fill = el.textColor.value; updateShapeDom(b); }
   };
   el.strokeW.oninput = () => {
     const b = getSelected(); if (!b) return;
     const v = Math.max(0, parseFloat(el.strokeW.value) || 0);
-    if (b.type === 'text') {
-      b.strokeW = v;
-      updateTextDom(b);
-    } else if (b.type === 'shape') {
-      b.strokeW = v;
-      updateShapeDom(b);
-    }
+    if (b.type === 'text') { b.strokeW = v; updateTextDom(b); }
+    else if (b.type === 'shape') { b.strokeW = v; updateShapeDom(b); }
   };
   el.strokeColor.oninput = () => {
     const b = getSelected(); if (!b) return;
-    if (b.type === 'text') {
-      b.strokeColor = el.strokeColor.value;
-      updateTextDom(b);
-    } else if (b.type === 'shape') {
-      b.stroke = el.strokeColor.value;
-      updateShapeDom(b);
-    }
+    if (b.type === 'text') { b.strokeColor = el.strokeColor.value; updateTextDom(b); }
+    else if (b.type === 'shape') { b.stroke = el.strokeColor.value; updateShapeDom(b); }
   };
   el.boldBtn.onclick = () => {
     const b = getSelected(); if (!b || b.type !== 'text') return;
-    // Toggle between current weight and its bold counterpart (400 <-> 700)
     b.weight = b.weight >= 700 ? 400 : 700;
-    // Pick a weight the family actually supports, if needed
     const fam = FONT_FAMILIES.find(f => f.family === b.family);
     if (fam && !fam.weights.includes(b.weight)) {
       b.weight = fam.weights.reduce((p, c) =>
@@ -1829,10 +1792,13 @@ function wireEvents() {
     if (e.target === el.scroll || e.target === $('#canvasCenter')) deselect();
   });
 
-  /* Global mousedown: exit edit if click outside the editing box */
+  /* Global mousedown: exit edit if click outside the editing box
+     — but let clicks on the columns list fall through so we can
+       insert {{col}} at the caret. */
   document.addEventListener('mousedown', e => {
     const sel = getSelected();
     if (sel && sel.editing && !sel.el.contains(e.target)) {
+      if (e.target.closest('.col-item, .col-list, #colHint')) return;
       exitEditMode(sel);
     }
   });
@@ -1851,7 +1817,6 @@ function wireEvents() {
       return;
     }
 
-    // Copy / cut / paste — work globally, ignore when typing in a form field
     const mod = e.ctrlKey || e.metaKey;
     if (mod && !typing && !inEdit) {
       const k = e.key.toLowerCase();
@@ -1869,7 +1834,7 @@ function wireEvents() {
     if (e.key === 'Delete' || e.key === 'Backspace') {
       e.preventDefault(); removeBox(b); return;
     }
-    if (e.key === 'F2' && b.type === 'text' && !b.colKey) {
+    if (e.key === 'F2' && b.type === 'text') {
       e.preventDefault(); enterEditMode(b); return;
     }
     if (e.key.startsWith('Arrow')) {
