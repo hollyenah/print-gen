@@ -8,7 +8,6 @@
 const P = {
   plus:      '<path d="M12 5v14M5 12h14"/>',
   text:      '<path d="M5 6h14M12 6v13M9 19h6"/>',
-  staticText:'<path d="M5 5h14M5 12h9M5 19h12"/>',
   image:     '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="m21 16-5-5L5 20"/>',
   download:  '<path d="M12 3v12m0 0 4-4m-4 4-4-4M4 19h16"/>',
   save:      '<path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><path d="M17 21v-8H7v8M7 3v5h8"/>',
@@ -796,15 +795,6 @@ function addFieldBox(colKey) {
   state.boxes.push(b);
   renderBox(b);
   selectBox(b);
-  return b;
-}
-
-function addStaticBox() {
-  const b = newTextBox();
-  state.boxes.push(b);
-  renderBox(b);
-  selectBox(b);
-  requestAnimationFrame(() => enterEditMode(b));
   return b;
 }
 
@@ -1655,13 +1645,11 @@ function wireEvents() {
   });
 
   /* Editor top */
-  $('#backBtn').onclick = goLanding;
-  $('#addFieldBtn').onclick = () => {
+  $('#addTextFieldBtn').onclick = () => {
     addFieldBox();
-    toast('Click a column in the sidebar to insert {{column}}');
+    toast('Double-click to edit · click a column to insert {{column}}');
   };
-  $('#addStaticBtn').onclick = () => addStaticBox();
-  $('#addImageBtn').onclick  = () => el.imgInput.click();
+  $('#addImageBtn').onclick = () => el.imgInput.click();
 
   const shapeMenu = document.getElementById('shapeMenu');
   const shapeBtn  = document.getElementById('addShapeBtn');
