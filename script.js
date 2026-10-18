@@ -1,6 +1,6 @@
 /* 
-   Print-Gen — application logic (v4)
-    */
+   Print-Gen — application logic (v6, multi-style text + fixed size in pt)
+*/
 (function () {
 'use strict';
 
@@ -48,6 +48,8 @@ function hydrateIcons(root) {
 
 /* CONSTANTS */
 const UNIT_PX = { px: 1, in: 96, cm: 96 / 2.54, mm: 96 / 25.4, pt: 96 / 72 };
+const PT_TO_PX = 96 / 72;   // 1pt = 1.333px
+const PX_TO_PT = 72 / 96;   // 1px = 0.75pt
 
 const PRESETS = [
   { name: 'A4 Portrait',  w: 210,  h: 297,  unit: 'mm' },
@@ -93,6 +95,16 @@ const LS_TPL   = 'printgen.templates.v2';
 const LS_THEME = 'printgen.theme';
 const LINE_H   = 1.15;
 
+/* DEFAULT STYLE */
+const DEFAULT_STYLE = {
+  family: 'Inter',
+  weight: 400,
+  italic: false,
+  color: '#000000',
+  strokeW: 0,
+  strokeColor: '#000000'
+};
+
 /* STATE */
 const state = {
   doc: { w: 794, h: 1123, name: 'A4 Portrait' },
@@ -118,7 +130,9 @@ const el = {
   docBadge: $('#docBadge'),
   colList: $('#colList'), colCount: $('#colCount'), colHint: $('#colHint'),
   stylebar: $('#stylebar'), sbText: $('#sbText'),
-  fontSelect: $('#fontSelect'), textColor: $('#textColor'),
+  lblColor: $('#lblColor'),
+  lblStroke: $('#lblStroke'),
+  fontSelect: $('#fontSelect'), fontSize: $('#fontSize'), textColor: $('#textColor'),
   strokeW: $('#strokeW'), strokeColor: $('#strokeColor'),
   boldBtn: $('#boldBtn'), italicBtn: $('#italicBtn'), alignBtn: $('#alignBtn'),
   fileList: $('#fileList'), rowList: $('#rowList'), navCounter: $('#navCounter'),
@@ -139,67 +153,121 @@ const el = {
   sheetModalClose: $('#sheetModalClose')
 };
 
-/* TEXT MEASUREMENT (offscreen canvas) */
+/* TEXT MEASUREMENT */
 const measure = document.createElement('canvas').getContext('2d');
 
-function fontString(b, size) {
-  const style = b.italic ? 'italic ' : '';
-  const weight = b.weight || 400;
-  return `${style}${weight} ${size}px "${b.family || 'Inter'}", sans-serif`;
-}
-
-function wrapText(ctx, text, maxW) {
-  const out = [];
-  for (const para of text.split('\n')) {
-    if (!para) { out.push(''); continue; }
-    const words = para.split(/\s+/).filter(Boolean);
-    let line = '';
-    for (const word of words) {
-      const test = line ? line + ' ' + word : word;
-      if (!line || ctx.measureText(test).width <= maxW) line = test;
-      else { out.push(line); line = word; }
-    }
-    if (line) out.push(line);
-  }
-  return out;
+function styleFontString(style, sizePx) {
+  const it = style.italic ? 'italic ' : '';
+  const w  = style.weight || 400;
+  const f  = style.family || 'Inter';
+  return `${it}${w} ${sizePx}px "${f}", sans-serif`;
 }
 
 const _fitCache = new Map();
-const FIT_CACHE_MAX = 4000;
+const FIT_CACHE_MAX = 2000;
 
-function fitText(b, text) {
+function styleSignature(style) {
+  return `${style.family}|${style.weight}|${style.italic}`;
+}
+
+function fitCacheKey(runs, w, h) {
+  let sig = `${w}|${h}||`;
+  for (const r of runs) sig += `{${styleSignature(r.style)}}${r.text}\u0001`;
+  return sig;
+}
+
+/* Build paragraphs of styled words from resolved runs */
+function runsToParagraphs(runs) {
+  const paragraphs = [[]];
+  for (const r of runs) {
+    const parts = r.text.split('\n');
+    for (let i = 0; i < parts.length; i++) {
+      if (i > 0) paragraphs.push([]);
+      const words = parts[i].split(/\s+/).filter(Boolean);
+      for (const word of words) paragraphs[paragraphs.length - 1].push({ text: word, style: r.style });
+    }
+  }
+  return paragraphs;
+}
+
+/* Wrap styled words to maxW, using `sizePx` for measurement */
+function wrapStyledWords(ctx, words, maxW, sizePx) {
+  const lines = [];
+  let line = [];
+  let lineW = 0;
+
+  for (const w of words) {
+    ctx.font = styleFontString(w.style, sizePx);
+    const wordW = ctx.measureText(w.text).width;
+    const spaceW = ctx.measureText(' ').width;
+    const addW = (line.length ? spaceW : 0) + wordW;
+
+    if (line.length && lineW + addW > maxW) {
+      lines.push(line);
+      line = [w];
+      lineW = wordW;
+    } else {
+      line.push(w);
+      lineW += addW;
+    }
+  }
+  if (line.length) lines.push(line);
+  return lines;
+}
+
+/* Auto-fit: find largest size where resolved runs fit in box (w×h) */
+function fitTextMulti(b, resolvedRuns) {
+  if (!resolvedRuns || !resolvedRuns.length) { b._fitSize = 12; return 12; }
+  const text = runsText(resolvedRuns);
   if (!text) { b._fitSize = 12; return 12; }
+
   const W = b.w, H = b.h;
   if (W <= 2 || H <= 2) { b._fitSize = 4; return 4; }
 
-  const key = `${W}|${H}|${b.family}|${b.weight}|${b.italic}|${text}`;
+  const key = fitCacheKey(resolvedRuns, W, H);
   const hit = _fitCache.get(key);
   if (hit !== undefined) { b._fitSize = hit; return hit; }
 
-  const words = text.split(/\s+/).filter(Boolean);
+  // Compute hard cap: widest single word at size 100
   let maxWordRatio = 0;
-  measure.font = fontString(b, 100);
-  for (const w of words) {
-    const r = measure.measureText(w).width;
-    if (r > maxWordRatio) maxWordRatio = r;
+  for (const r of resolvedRuns) {
+    measure.font = styleFontString(r.style, 100);
+    const words = r.text.split(/\s+/).filter(Boolean);
+    for (const w of words) {
+      const m = measure.measureText(w).width;
+      if (m > maxWordRatio) maxWordRatio = m;
+    }
   }
   const hardCap = maxWordRatio > 0 ? Math.floor(100 * W / maxWordRatio) : 600;
   const hi0 = Math.max(4, Math.min(600, hardCap));
   const hCap = Math.max(4, Math.floor(H / LINE_H));
 
+  const paragraphs = runsToParagraphs(resolvedRuns);
+
   let lo = 4, hi = Math.min(hi0, hCap), best = 4;
   while (lo <= hi) {
     const mid = (lo + hi) >> 1;
-    measure.font = fontString(b, mid);
-    const lines = wrapText(measure, text, W);
-    const height = lines.length * mid * LINE_H;
+    let totalLines = 0;
+    for (const p of paragraphs) {
+      if (!p.length) { totalLines += 1; continue; }
+      const lines = wrapStyledWords(measure, p, W, mid);
+      totalLines += lines.length;
+    }
+    const height = totalLines * mid * LINE_H;
     if (height <= H) { best = mid; lo = mid + 1; }
     else hi = mid - 1;
   }
+
   b._fitSize = best;
   if (_fitCache.size >= FIT_CACHE_MAX) _fitCache.clear();
   _fitCache.set(key, best);
   return best;
+}
+
+/* The actual font size (in px) used for this box */
+function effectiveFontSizePx(b, resolvedRuns) {
+  if (b.fixedSizePt && b.fixedSizePt > 0) return b.fixedSizePt * PT_TO_PX;
+  return fitTextMulti(b, resolvedRuns);
 }
 
 /* THEME */
@@ -346,14 +414,9 @@ function newTextBox(partial) {
     type: 'text',
     x: 60, y: 60, w: 320, h: 100,
     z: ++state.zTop,
-    template: '',                  // "Bonjour {{Prénom}}, {{Montant}} €"
-    family: 'Inter',
-    weight: 400,
-    italic: false,
-    color: '#111111',
+    template: [],          // Run[]
     align: 'left',
-    strokeW: 0,
-    strokeColor: '#000000'
+    fixedSizePt: null      // null/0 = auto-fit, number = fixed size in pt
   }, partial || {});
 }
 
@@ -383,65 +446,234 @@ function newShapeBox(shape, partial) {
 function getBox(id) { return state.boxes.find(b => b.id === id); }
 function getSelected() { return state.selectedId ? getBox(state.selectedId) : null; }
 
-/* ─────────── TEMPLATE HELPERS ─────────── */
+/* STYLE / RUN HELPERS */
+function makeStyle(p) { return Object.assign({}, DEFAULT_STYLE, p || {}); }
+function makeRun(text, style) { return { text: String(text), style: makeStyle(style) }; }
+function runsText(runs) { return (runs || []).map(r => r.text).join(''); }
+function runsEmpty(runs) { return !runs || !runs.some(r => r.text && r.text.length); }
+function setAllRunsStyle(runs, patch) { for (const r of runs) Object.assign(r.style, patch); }
+
+function styleAtOffset(runs, offset) {
+  if (!runs || !runs.length) return makeStyle();
+  let acc = 0;
+  for (const r of runs) {
+    const end = acc + r.text.length;
+    if (offset >= acc && offset < end) return makeStyle(r.style);
+    acc = end;
+  }
+  return makeStyle(runs[runs.length - 1].style);
+}
+
+/* PLACEHOLDER RESOLUTION */
 const PLACEHOLDER_RE = /\{\{([^{}]+)\}\}/g;
 
-function resolveTemplate(template, row) {
-  if (!template) return '';
-  return template.replace(PLACEHOLDER_RE, (_, k) => {
+function resolvePlaceholders(text, row) {
+  return text.replace(PLACEHOLDER_RE, (_, k) => {
     const key = k.trim();
     const v = row ? row[key] : null;
     return v == null ? '' : String(v);
   });
 }
 
-function readEditableText(node) {
-  const raw = node.innerText != null ? node.innerText : (node.textContent || '');
-  return raw.replace(/\r\n?/g, '\n');
-}
-
-function insertPlaceholder(b, colName) {
-  const placeholder = `{{${colName}}}`;
-
-  if (b.editing && b.textEl) {
-    const sel = window.getSelection();
-    if (sel && sel.rangeCount > 0 && b.textEl.contains(sel.anchorNode)) {
-      const range = sel.getRangeAt(0);
-      range.deleteContents();
-      const node = document.createTextNode(placeholder);
-      range.insertNode(node);
-      range.setStartAfter(node);
-      range.setEndAfter(node);
-      sel.removeAllRanges();
-      sel.addRange(range);
-      b.template = readEditableText(b.textEl);
-      updateTextDom(b);
-      buildColumns();
-      return;
-    }
-  }
-
-  const needsSpace = b.template && !/\s$/.test(b.template);
-  b.template = (b.template || '') + (needsSpace ? ' ' : '') + placeholder;
-
-  if (b.editing && b.textEl) {
-    b.textEl.textContent = b.template;
-    const range = document.createRange();
-    range.selectNodeContents(b.textEl);
-    range.collapse(false);
-    const sel = window.getSelection();
-    sel.removeAllRanges();
-    sel.addRange(range);
-  }
-  updateTextDom(b);
-  buildColumns();
+function resolveRuns(runs, row) {
+  if (!runs) return [];
+  return runs.map(r => ({
+    text: resolvePlaceholders(r.text, row),
+    style: r.style
+  }));
 }
 
 function textFor(b) {
   if (b.type !== 'text') return '';
   const f = state.files[state.activeFile];
   const row = f ? (f.rows[state.row] || {}) : {};
-  return resolveTemplate(b.template, row);
+  return runsText(resolveRuns(b.template, row));
+}
+
+function currentRowData() {
+  const f = state.files[state.activeFile];
+  return f ? (f.rows[state.row] || {}) : {};
+}
+
+/* MIGRATION */
+function migrateBoxTemplate(bd) {
+  const baseStyle = {
+    family: bd.family || DEFAULT_STYLE.family,
+    weight: bd.weight || DEFAULT_STYLE.weight,
+    italic: !!bd.italic,
+    color: bd.color || DEFAULT_STYLE.color,
+    strokeW: bd.strokeW || 0,
+    strokeColor: bd.strokeColor || DEFAULT_STYLE.strokeColor
+  };
+
+  let runs = null;
+  if (Array.isArray(bd.template)) {
+    runs = bd.template.map(r => makeRun(r.text, Object.assign({}, baseStyle, r.style)));
+  } else if (typeof bd.template === 'string') {
+    runs = bd.template ? [makeRun(bd.template, baseStyle)] : [];
+  } else if (bd.colKey) {
+    runs = [makeRun(`{{${bd.colKey}}}`, baseStyle)];
+  } else if (bd.staticText) {
+    runs = [makeRun(bd.staticText, baseStyle)];
+  } else {
+    runs = [];
+  }
+
+  delete bd.colKey;
+  delete bd.staticText;
+  delete bd.family;
+  delete bd.weight;
+  delete bd.italic;
+  delete bd.color;
+  delete bd.strokeW;
+  delete bd.strokeColor;
+
+  bd.template = runs;
+  if (!bd.align) bd.align = 'left';
+  if (bd.fixedSizePt === undefined) bd.fixedSizePt = null;
+  return bd;
+}
+
+/* PLACEHOLDER INSERTION */
+function styleAtCurrentCaret(b) {
+  if (!b.editing) return b.template.length ? makeStyle(b.template[0].style) : makeStyle();
+  const sel = window.getSelection();
+  if (!sel || !sel.rangeCount) return makeStyle();
+  const range = sel.getRangeAt(0);
+  const off = caretOffsetInTextEl(b.textEl, range.startContainer, range.startOffset);
+  return styleAtOffset(b.template, off);
+}
+
+function caretOffsetInTextEl(root, node, nodeOffset) {
+  let off = 0;
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let n;
+  while ((n = walker.nextNode())) {
+    if (n === node) return off + nodeOffset;
+    off += n.textContent.length;
+  }
+  return off;
+}
+
+function insertPlaceholder(b, colName) {
+  const placeholder = `{{${colName}}}`;
+  const style = styleAtCurrentCaret(b);
+
+  if (b.editing) {
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount && b.textEl.contains(sel.anchorNode)) {
+      const range = sel.getRangeAt(0);
+      range.deleteContents();
+
+      // Wrap the placeholder in a styled span so it keeps current styling
+      const span = document.createElement('span');
+      span.style.fontFamily = `"${style.family}", sans-serif`;
+      span.style.fontWeight = String(style.weight);
+      span.style.fontStyle  = style.italic ? 'italic' : 'normal';
+      span.style.color      = style.color;
+      if (style.strokeW > 0) {
+        span.style.webkitTextStroke = style.strokeW + 'px ' + style.strokeColor;
+        span.style.paintOrder = 'stroke fill';
+      }
+      span.textContent = placeholder;
+
+      range.insertNode(span);
+      range.setStartAfter(span);
+      range.setEndAfter(span);
+      sel.removeAllRanges();
+      sel.addRange(range);
+
+      b.template = serializeEditable(b.textEl);
+      updateTextDom(b);
+      buildColumns();
+      return;
+    }
+  }
+
+  // Not editing: append a run
+  const last = b.template[b.template.length - 1];
+  if (last && last.text && !/\s$/.test(last.text) && sameStyle(last.style, style)) {
+    last.text += ' ' + placeholder;
+  } else {
+    b.template.push(makeRun((b.template.length ? ' ' : '') + placeholder, style));
+  }
+  updateTextDom(b);
+  buildColumns();
+}
+
+/* SERIALIZATION (contentEditable → Run[]) */
+function styleFromNode(node, fallback) {
+  const out = makeStyle(fallback);
+  let n = node.nodeType === Node.TEXT_NODE ? node.parentNode : node;
+  if (!n) return out;
+
+  // Only trust computed styles if the text is inside a <span> that WE styled
+  // (i.e. one created by runsToHtml with an explicit style="" attribute).
+  // Otherwise we'd pick up the body's color/font, not the user's chosen style.
+  const isOurSpan = n.tagName === 'SPAN' && n.hasAttribute('style');
+  if (!isOurSpan) return out;
+
+  const cs = window.getComputedStyle(n);
+  const fam = (cs.fontFamily || '').split(',')[0].replace(/["']/g, '').trim();
+  if (fam) out.family = fam;
+  const weight = parseInt(cs.fontWeight, 10);
+  if (!isNaN(weight)) out.weight = weight;
+  out.italic = cs.fontStyle === 'italic';
+  if (cs.color) out.color = rgbToHex(cs.color) || out.color;
+  if (cs.webkitTextStrokeWidth && cs.webkitTextStrokeWidth !== '0px') {
+    out.strokeW = parseFloat(cs.webkitTextStrokeWidth) || 0;
+    out.strokeColor = rgbToHex(cs.webkitTextStrokeColor) || out.strokeColor;
+  }
+  return out;
+}
+
+function rgbToHex(rgb) {
+  const m = /rgba?\((\d+)[,\s]+(\d+)[,\s]+(\d+)/.exec(rgb);
+  if (!m) return null;
+  const toHex = v => v.toString(16).padStart(2, '0');
+  return '#' + toHex(+m[1]) + toHex(+m[2]) + toHex(+m[3]);
+}
+
+function serializeEditable(root) {
+  const runs = [];
+  const baseStyle = makeStyle();
+
+  function push(text, style) {
+    if (!text) return;
+    const last = runs[runs.length - 1];
+    if (last && sameStyle(last.style, style)) last.text += text;
+    else runs.push(makeRun(text, style));
+  }
+
+  function walk(node) {
+    if (node.nodeType === Node.TEXT_NODE) {
+      push(node.textContent, styleFromNode(node, baseStyle));
+      return;
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE) return;
+    const tag = node.tagName.toLowerCase();
+    if (tag === 'br') { push('\n', baseStyle); return; }
+
+    // Skip our layout wrapper — it's structural, not user content.
+    if (node.classList && node.classList.contains('pg-obj-text-inner')) {
+      for (const child of node.childNodes) walk(child);
+      return;
+    }
+
+    const isBlock = tag === 'div' || tag === 'p';
+    if (isBlock && runs.length) push('\n', baseStyle);
+    for (const child of node.childNodes) walk(child);
+  }
+
+  for (const child of root.childNodes) walk(child);
+  for (let i = 0; i < runs.length; i++) runs[i].text = runs[i].text.replace(/\n{2,}/g, '\n');
+  return runs.filter(r => r.text.length);
+}
+
+function sameStyle(a, b) {
+  return a.family === b.family && a.weight === b.weight &&
+         a.italic === b.italic && a.color === b.color &&
+         a.strokeW === b.strokeW && a.strokeColor === b.strokeColor;
 }
 
 /* DOM RENDERING */
@@ -500,12 +732,37 @@ function renderBox(b) {
   return div;
 }
 
+function runsToHtml(runs) {
+  return runs.map(r => {
+    const s = r.style;
+    // Single quotes around the family name so we don't break the double-quoted
+    // style="..." attribute. The HTML parser was truncating style at the
+    // first inner double quote, silently killing font-family AND color.
+    const style = [
+      `font-family:'${s.family}',sans-serif`,
+      `font-weight:${s.weight}`,
+      `font-style:${s.italic ? 'italic' : 'normal'}`,
+      `color:${s.color}`,
+      s.strokeW > 0
+        ? `-webkit-text-stroke:${s.strokeW}px ${s.strokeColor};paint-order:stroke fill`
+        : ''
+    ].filter(Boolean).join(';');
+    return `<span style="${style}">${escapeHtml(r.text).replace(/\n/g, '<br>')}</span>`;
+  }).join('');
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]));
+}
+
 function updateTextDom(b) {
   if (b.type !== 'text' || !b.textEl) return;
   const t = b.textEl;
-  const visible = b.editing ? (b.template || '') : textFor(b);
-  const size = fitText(b, visible);
-  const rtl = ARABIC_RE.test(visible);
+
+  const resolved = resolveRuns(b.template, currentRowData());
+  const fullText = runsText(resolved);
+  const sizePx = effectiveFontSizePx(b, resolved);
+  const rtl = ARABIC_RE.test(fullText);
 
   let align = b.align;
   if (rtl) {
@@ -513,25 +770,15 @@ function updateTextDom(b) {
     else if (align === 'right') align = 'left';
   }
 
-  if (!b.editing && t.textContent !== visible) t.textContent = visible;
-
-  t.style.fontFamily = `"${b.family}", sans-serif`;
-  t.style.fontWeight = String(b.weight);
-  t.style.fontStyle  = b.italic ? 'italic' : 'normal';
-  t.style.fontSize   = size + 'px';
-  t.style.color      = b.color;
-  t.style.direction  = rtl ? 'rtl' : 'ltr';
-  t.style.justifyContent = align === 'left'  ? 'flex-start'
-                          : align === 'right' ? 'flex-end'
-                          : 'center';
+  t.style.fontSize = sizePx + 'px';
+  t.style.direction = rtl ? 'rtl' : 'ltr';
+  t.style.justifyContent = 'center';   // vertical center — always
   t.style.textAlign = align;
 
-  if (b.strokeW > 0) {
-    t.style.webkitTextStroke = b.strokeW + 'px ' + b.strokeColor;
-    t.style.paintOrder = 'stroke fill';
-  } else {
-    t.style.webkitTextStroke = '';
-    t.style.paintOrder = '';
+  if (!b.editing) {
+    // Wrap in a single inner block so multiple styled spans stay on the SAME line.
+    // Without this wrapper, flex-direction: column turns each span into its own line.
+    t.innerHTML = `<div class="pg-obj-text-inner">${runsToHtml(resolved)}</div>`;
   }
 }
 
@@ -550,7 +797,11 @@ function selectBox(b) {
   buildColumns();
 }
 
-function deselect() { selectBox(null); }
+function deselect() {
+  const sel = getSelected();
+  if (sel && sel.editing) exitEditMode(sel);
+  selectBox(null);
+}
 
 function showStylebar(b) {
   el.stylebar.classList.add('visible');
@@ -569,13 +820,26 @@ function showStylebar(b) {
   if (isText) {
     el.lblColor.textContent  = 'Color';
     el.lblStroke.textContent = 'Outline';
-    el.fontSelect.value      = `${b.family}|${b.weight}|${b.italic ? 'italic' : 'normal'}`;
-    el.textColor.value       = b.color;
-    el.strokeW.value         = b.strokeW;
-    el.strokeColor.value     = b.strokeColor;
-    el.boldBtn.classList.toggle('on', b.weight >= 700);
-    el.italicBtn.classList.toggle('on', b.italic);
-    el.alignBtn.innerHTML    = svg({left:'alignL', center:'alignC', right:'alignR'}[b.align]);
+
+    const s = styleAtCurrentCaret(b);
+    el.fontSelect.value  = `${s.family}|${s.weight}|${s.italic ? 'italic' : 'normal'}`;
+    el.textColor.value   = s.color;
+    el.strokeW.value     = s.strokeW;
+    el.strokeColor.value = s.strokeColor;
+    el.boldBtn.classList.toggle('on', s.weight >= 700);
+    el.italicBtn.classList.toggle('on', s.italic);
+    el.alignBtn.innerHTML = svg({left:'alignL', center:'alignC', right:'alignR'}[b.align]);
+
+    // Font size field
+    const fitPx = b._fitSize || fitTextMulti(b, resolveRuns(b.template, currentRowData()));
+    const fitPt = Math.round(fitPx * PX_TO_PT * 10) / 10;
+    if (b.fixedSizePt) {
+      el.fontSize.value = b.fixedSizePt;
+      el.fontSize.placeholder = '';
+    } else {
+      el.fontSize.value = '';
+      el.fontSize.placeholder = fitPt.toFixed(1);
+    }
   } else if (b.type === 'shape') {
     el.lblColor.textContent  = 'Fill';
     el.lblStroke.textContent = 'Border';
@@ -587,19 +851,157 @@ function showStylebar(b) {
 
 function hideStylebar() { el.stylebar.classList.remove('visible'); }
 
+function saveSelectionFromBox() {
+  const b = getSelected();
+  if (!b || !b.editing || !b.textEl) { _savedSelection = null; return; }
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0) { _savedSelection = null; return; }
+  const range = sel.getRangeAt(0);
+  if (!b.textEl.contains(range.commonAncestorContainer)) {
+    _savedSelection = null;
+    return;
+  }
+  try { _savedSelection = range.cloneRange(); }
+  catch (e) { _savedSelection = null; }
+}
+
+function getValidSavedRange(b) {
+  if (!_savedSelection) return null;
+  try {
+    if (!b.textEl.contains(_savedSelection.startContainer) ||
+        !b.textEl.contains(_savedSelection.endContainer)) {
+      _savedSelection = null;
+      return null;
+    }
+    return _savedSelection.cloneRange();
+  } catch (e) { _savedSelection = null; return null; }
+}
+
+/* STYLE APPLICATION */
+function applyStyleToBox(b, patch) {
+  // Not editing → apply to whole box
+  if (!b.editing) {
+    setAllRunsStyle(b.template, patch);
+    updateTextDom(b);
+    return;
+  }
+
+  // Editing: find a range — live first, then saved
+  const sel = window.getSelection();
+  let range = null;
+
+  if (sel && sel.rangeCount > 0) {
+    const r = sel.getRangeAt(0);
+    if (!r.collapsed && b.textEl.contains(r.commonAncestorContainer)) {
+      range = r.cloneRange();
+    }
+  }
+  if (!range) {
+    const saved = getValidSavedRange(b);
+    if (saved && !saved.collapsed) range = saved;
+  }
+
+  if (range) {
+    // Extract + wrap: works even when the selection spans multiple spans
+    try {
+      const contents = range.extractContents();
+      const span = document.createElement('span');
+      if (patch.family)    span.style.fontFamily = `'${patch.family}', sans-serif`;
+      if (patch.weight)    span.style.fontWeight = String(patch.weight);
+      if (patch.italic !== undefined) span.style.fontStyle = patch.italic ? 'italic' : 'normal';
+      if (patch.color)     span.style.color = patch.color;
+      if (patch.strokeW !== undefined) {
+        if (patch.strokeW > 0) {
+          span.style.webkitTextStroke = patch.strokeW + 'px ' +
+            (patch.strokeColor || '#000');
+          span.style.paintOrder = 'stroke fill';
+        } else {
+          span.style.webkitTextStroke = '';
+          span.style.paintOrder = '';
+        }
+      }
+      if (patch.strokeColor && span.style.webkitTextStroke) {
+        span.style.webkitTextStroke = (patch.strokeW || 0) + 'px ' + patch.strokeColor;
+      }
+      span.appendChild(contents);
+      range.insertNode(span);
+
+      // Reselect inside the new span so the user still sees blue
+      const nr = document.createRange();
+      nr.selectNodeContents(span);
+      sel.removeAllRanges();
+      sel.addRange(nr);
+      _savedSelection = nr.cloneRange();
+
+      b.template = serializeEditable(b.textEl);
+      updateTextDom(b);
+      return;
+    } catch (e) {
+      // Fall through to whole-box on extract failure
+    }
+  }
+
+  // No usable range → whole box
+  setAllRunsStyle(b.template, patch);
+  updateSpansInPlace(b, patch);
+  updateTextDom(b);
+}
+
+function updateSpansInPlace(b, patch) {
+  const t = b.textEl;
+  if (!t) return;
+
+  // Wrap any bare text nodes first
+  const bareTexts = [];
+  const walker = document.createTreeWalker(t, NodeFilter.SHOW_TEXT);
+  let n;
+  while ((n = walker.nextNode())) {
+    if (n.parentNode === t && n.textContent.length) bareTexts.push(n);
+  }
+  for (const tn of bareTexts) {
+    const span = document.createElement('span');
+    span.style.fontFamily = `'${DEFAULT_STYLE.family}', sans-serif`;
+    span.style.fontWeight = String(DEFAULT_STYLE.weight);
+    span.style.fontStyle  = DEFAULT_STYLE.italic ? 'italic' : 'normal';
+    span.style.color      = DEFAULT_STYLE.color;
+    tn.parentNode.replaceChild(span, tn);
+    span.appendChild(tn);
+  }
+
+  const spans = t.querySelectorAll('span');
+  for (const span of spans) {
+    if (patch.family)    span.style.fontFamily = `'${patch.family}', sans-serif`;
+    if (patch.weight)    span.style.fontWeight = String(patch.weight);
+    if (patch.italic !== undefined) span.style.fontStyle = patch.italic ? 'italic' : 'normal';
+    if (patch.color)     span.style.color = patch.color;
+    if (patch.strokeW !== undefined) {
+      if (patch.strokeW > 0) {
+        span.style.webkitTextStroke = patch.strokeW + 'px ' +
+          (patch.strokeColor || '#000');
+        span.style.paintOrder = 'stroke fill';
+      } else {
+        span.style.webkitTextStroke = '';
+        span.style.paintOrder = '';
+      }
+    }
+    if (patch.strokeColor && span.style.webkitTextStroke) {
+      span.style.webkitTextStroke = (patch.strokeW || 0) + 'px ' + patch.strokeColor;
+    }
+  }
+}
+
 /* INTERACTION */
 function wireBox(b) {
   b.el.addEventListener('mousedown', e => {
+    if (b.editing) return;                         // let the browser do its native selection
     if (e.target.classList.contains('pg-handle')) return;
     if (e.target.classList.contains('pg-del')) return;
-    if (b.editing) return;
     if (e.button !== 0) return;
     e.preventDefault();
     selectBox(b);
     startDrag(e, b);
   });
 
-  /* Double-click → edit text boxes */
   b.el.addEventListener('dblclick', e => {
     if (b.type !== 'text') return;
     if (b.editing) return;
@@ -649,26 +1051,22 @@ function startResize(e, b, dir) {
     const dx = (ev.clientX - sx) / z;
     const dy = (ev.clientY - sy) / z;
     let x = ox, y = oy, w = ow, h = oh;
-
     if (dir.includes('e')) w = Math.max(20, ow + dx);
     if (dir.includes('s')) h = Math.max(16, oh + dy);
     if (dir.includes('w')) { w = Math.max(20, ow - dx); x = ox + (ow - w); }
     if (dir.includes('n')) { h = Math.max(16, oh - dy); y = oy + (oh - h); }
-
     if (lock) {
       if (Math.abs(w - ow) > Math.abs(h - oh)) h = w / ratio;
       else w = h * ratio;
       if (dir.includes('w')) x = ox + (ow - w);
       if (dir.includes('n')) y = oy + (oh - h);
     }
-
     b.x = Math.round(x); b.y = Math.round(y);
     b.w = Math.round(w); b.h = Math.round(h);
     b.el.style.left   = b.x + 'px';
     b.el.style.top    = b.y + 'px';
     b.el.style.width  = b.w + 'px';
     b.el.style.height = b.h + 'px';
-
     if (b.type === 'text') updateTextDom(b);
     else if (b.type === 'shape') updateShapeDom(b);
   };
@@ -676,33 +1074,53 @@ function startResize(e, b, dir) {
     document.removeEventListener('mousemove', move);
     document.removeEventListener('mouseup', up);
   };
-
   document.addEventListener('mousemove', move);
   document.addEventListener('mouseup', up);
 }
 
 /* INLINE EDIT */
-function enterEditMode(b) {
+function enterEditMode(b, initialChar) {
   if (b.type !== 'text' || b.editing) return;
   b.editing = true;
   b.el.classList.add('editing');
   const t = b.textEl;
-  t.textContent = b.template || '';
+
+  // ALWAYS seed with at least one run so typing inherits its style.
+  if (!Array.isArray(b.template) || b.template.length === 0) {
+    b.template = [makeRun('', DEFAULT_STYLE)];
+  }
+
+  t.innerHTML = `<div class="pg-obj-text-inner">${runsToHtml(b.template)}</div>`;
   t.contentEditable = 'true';
+  t.setAttribute('contenteditable', 'true');
+  t.style.userSelect = 'text';
+  t.style.webkitUserSelect = 'text';
+  t.style.pointerEvents = 'auto';
+  t.style.cursor = 'text';
+
   updateTextDom(b);
 
+  // Focus synchronously
+  try { t.focus({ preventScroll: true }); } catch (e) { t.focus(); }
+  placeCaretAtEnd(t);
+
+  // Verify focus in RAF; retry if stolen
   requestAnimationFrame(() => {
-    t.focus();
-    const range = document.createRange();
-    range.selectNodeContents(t);
-    range.collapse(false);
-    const sel = window.getSelection();
-    sel.removeAllRanges();
-    sel.addRange(range);
+    if (!b.editing) return;
+    if (document.activeElement !== t) {
+      try { t.focus({ preventScroll: true }); } catch (e) { t.focus(); }
+      placeCaretAtEnd(t);
+    }
+    if (initialChar) {
+      insertTextAtCaret(initialChar);
+      b.template = serializeEditable(t);
+      updateTextDom(b);
+      showStylebar(b);
+    }
   });
 
   const onInput = () => {
-    b.template = readEditableText(t);
+    b.template = serializeEditable(t);
     updateTextDom(b);
   };
   t.addEventListener('input', onInput);
@@ -712,23 +1130,80 @@ function enterEditMode(b) {
   };
   t.addEventListener('keydown', onKey);
 
+  const onSelChange = () => {
+    if (!b.editing) return;
+    showStylebar(b);
+  };
+  document.addEventListener('selectionchange', onSelChange);
+
   b._editCleanup = () => {
     t.removeEventListener('input', onInput);
     t.removeEventListener('keydown', onKey);
+    document.removeEventListener('selectionchange', onSelChange);
   };
+
+  _savedSelection = null;
+}
+
+
+function placeCaretAtEnd(root) {
+  const range = document.createRange();
+  const sel = window.getSelection();
+
+  const spans = root.querySelectorAll('span');
+  const lastSpan = spans[spans.length - 1];
+
+  if (lastSpan) {
+    // Put caret INSIDE the last span (this is the critical fix)
+    const lastNode = lastSpan.lastChild;
+    if (lastNode && lastNode.nodeType === Node.TEXT_NODE) {
+      range.setStart(lastNode, lastNode.length);
+      range.setEnd(lastNode, lastNode.length);
+    } else {
+      range.selectNodeContents(lastSpan);
+      range.collapse(false);
+    }
+  } else if (root.lastChild && root.lastChild.nodeType === Node.TEXT_NODE) {
+    range.setStart(root.lastChild, root.lastChild.length);
+    range.setEnd(root.lastChild, root.lastChild.length);
+  } else {
+    range.selectNodeContents(root);
+    range.collapse(false);
+  }
+
+  sel.removeAllRanges();
+  sel.addRange(range);
+}
+
+function insertTextAtCaret(text) {
+  const sel = window.getSelection();
+  if (!sel || !sel.rangeCount) return;
+  const range = sel.getRangeAt(0);
+  range.deleteContents();
+  const node = document.createTextNode(text);
+  range.insertNode(node);
+  range.setStartAfter(node);
+  range.setEndAfter(node);
+  sel.removeAllRanges();
+  sel.addRange(range);
 }
 
 function exitEditMode(b) {
   if (!b || !b.editing) return;
   const t = b.textEl;
-  b.template = readEditableText(t);
+  b.template = serializeEditable(t);
   b.editing = false;
   b.el.classList.remove('editing');
   t.contentEditable = 'false';
+  t.setAttribute('contenteditable', 'false');
+  t.style.userSelect = '';
+  t.style.webkitUserSelect = '';
+  t.style.pointerEvents = '';
+  t.style.cursor = '';
   b._editCleanup && b._editCleanup();
   b._editCleanup = null;
 
-  if (!b.template.trim()) { removeBox(b); return; }
+  if (runsEmpty(b.template)) { removeBox(b); return; }
   updateTextDom(b);
   buildColumns();
 }
@@ -739,7 +1214,11 @@ function cloneBoxData(b) {
   for (const k in b) {
     if (k === 'el' || k === 'textEl' || k === 'imgEl' || k === 'shapeEl' ||
         k === '_img' || k === '_editCleanup' || k === '_fitSize' || k === 'editing') continue;
-    o[k] = b[k];
+    if (k === 'template') {
+      o.template = b.template.map(r => ({ text: r.text, style: Object.assign({}, r.style) }));
+    } else {
+      o[k] = b[k];
+    }
   }
   return o;
 }
@@ -791,10 +1270,18 @@ function duplicateSelected() {
 
 /* ADD / REMOVE */
 function addFieldBox(colKey) {
-  const b = newTextBox({ template: colKey ? `{{${colKey}}}` : '' });
+  const b = newTextBox({
+    template: colKey
+      ? [makeRun(`{{${colKey}}}`, DEFAULT_STYLE)]
+      : []
+  });
   state.boxes.push(b);
   renderBox(b);
   selectBox(b);
+  // Enter edit mode immediately — so the user can start typing right away
+  requestAnimationFrame(() => {
+    if (state.selectedId === b.id) enterEditMode(b);
+  });
   return b;
 }
 
@@ -1063,7 +1550,8 @@ function buildColumns() {
   const sel = getSelected();
   const usedCols = new Set();
   if (sel && sel.type === 'text' && sel.template) {
-    for (const m of sel.template.matchAll(PLACEHOLDER_RE)) {
+    const fullText = runsText(sel.template);
+    for (const m of fullText.matchAll(PLACEHOLDER_RE)) {
       usedCols.add(m[1].trim());
     }
   }
@@ -1088,6 +1576,7 @@ function buildColumns() {
 
 const ROW_H = 34;
 let _rowVirtualState = null;
+let _savedSelection = null;
 
 function buildRows() {
   el.rowList.innerHTML = '';
@@ -1120,7 +1609,6 @@ function buildRows() {
     const h  = el.rowList.clientHeight || 400;
     const first = Math.max(0, Math.floor(st / ROW_H) - 4);
     const last  = Math.min(total, Math.ceil((st + h) / ROW_H) + 4);
-
     viewport.style.transform = `translateY(${first * ROW_H}px)`;
     viewport.innerHTML = '';
     const frag = document.createDocumentFragment();
@@ -1207,13 +1695,11 @@ function loadTemplate(t) {
   openEditor(t.w, t.h, t.docName || t.name, true);
   requestAnimationFrame(() => {
     for (const bd of t.boxes) {
-      if (bd.type === 'text' && bd.template === undefined) {
-        bd.template = bd.colKey ? `{{${bd.colKey}}}` : (bd.staticText || '');
-        delete bd.colKey;
-        delete bd.staticText;
-      }
+      if (bd.type === 'text') migrateBoxTemplate(bd);
 
-      const b = bd.type === 'image' ? newImageBox(bd.src, bd) : newTextBox(bd);
+      const b = bd.type === 'image' ? newImageBox(bd.src, bd)
+              : bd.type === 'shape' ? newShapeBox(bd.shape, bd)
+              : newTextBox(bd);
       b.z = bd.z;
       state.zTop = Math.max(state.zTop, bd.z);
       if (b.type === 'image') {
@@ -1251,10 +1737,7 @@ function shapePoints(shape, w, h, strokeW) {
     for (let i = 0; i < 10; i++) {
       const ang = -Math.PI / 2 + i * Math.PI / 5;
       const rad = (i % 2 === 0 ? 1 : 0.382);
-      pts.push({
-        x: cx + Math.cos(ang) * rad * iw / 2,
-        y: cy + Math.sin(ang) * rad * ih / 2
-      });
+      pts.push({ x: cx + Math.cos(ang) * rad * iw / 2, y: cy + Math.sin(ang) * rad * ih / 2 });
     }
     return { kind: 'poly', points: pts };
   }
@@ -1307,43 +1790,71 @@ function drawShapeBox(ctx, b) {
   ctx.restore();
 }
 
-
 /* EXPORT */
-function drawTextBox(ctx, b, text) {
+function drawTextRuns(ctx, b, resolvedRuns) {
+  if (!resolvedRuns || !resolvedRuns.length) return;
+  const text = runsText(resolvedRuns);
   if (!text) return;
-  const size = b._fitSize || fitText(b, text);
-  ctx.font = fontString(b, size);
 
+  const sizePx = effectiveFontSizePx(b, resolvedRuns);
   const rtl = ARABIC_RE.test(text);
-  ctx.direction = rtl ? 'rtl' : 'ltr';
 
   let align = b.align;
   if (rtl) {
     if (align === 'left')  align = 'right';
     else if (align === 'right') align = 'left';
   }
+  ctx.direction = rtl ? 'rtl' : 'ltr';
   ctx.textAlign = align === 'left' ? 'left' : align === 'right' ? 'right' : 'center';
   ctx.textBaseline = 'top';
 
-  const lines = wrapText(ctx, text, b.w);
-  const lineH = size * LINE_H;
-  const totalH = lines.length * lineH;
-  let y = b.y + (b.h - totalH) / 2;
-  const x = align === 'left'  ? b.x
-          : align === 'right' ? b.x + b.w
-          : b.x + b.w / 2;
-
-  if (b.strokeW > 0) {
-    ctx.lineWidth = b.strokeW * 2;
-    ctx.strokeStyle = b.strokeColor;
-    ctx.lineJoin = 'round';
-    ctx.miterLimit = 2;
+  const paragraphs = runsToParagraphs(resolvedRuns);
+  const allLines = [];
+  for (const para of paragraphs) {
+    if (!para.length) { allLines.push([]); continue; }
+    const lines = wrapStyledWords(ctx, para, b.w, sizePx);
+    for (const line of lines) allLines.push(line);
   }
-  ctx.fillStyle = b.color;
 
-  for (const line of lines) {
-    if (b.strokeW > 0) ctx.strokeText(line, x, y);
-    ctx.fillText(line, x, y);
+  const lineH = sizePx * LINE_H;
+  const totalH = allLines.length * lineH;
+  let y = b.y + (b.h - totalH) / 2;
+
+  const leftX   = b.x;
+  const rightX  = b.x + b.w;
+  const centerX = b.x + b.w / 2;
+
+  for (const line of allLines) {
+    let lineW = 0;
+    const widths = [];
+    for (let i = 0; i < line.length; i++) {
+      const seg = line[i];
+      ctx.font = styleFontString(seg.style, sizePx);
+      const w = ctx.measureText(seg.text).width;
+      widths.push(w);
+      lineW += w + (i > 0 ? ctx.measureText(' ').width : 0);
+    }
+
+    let cursorX =
+      align === 'left'  ? leftX :
+      align === 'right' ? rightX - lineW :
+                          centerX - lineW / 2;
+
+    for (let i = 0; i < line.length; i++) {
+      const seg = line[i];
+      const s = seg.style;
+      ctx.font = styleFontString(s, sizePx);
+      ctx.fillStyle = s.color;
+      if (s.strokeW > 0) {
+        ctx.lineWidth = s.strokeW * 2;
+        ctx.strokeStyle = s.strokeColor;
+        ctx.lineJoin = 'round';
+        ctx.miterLimit = 2;
+        ctx.strokeText(seg.text, cursorX, y);
+      }
+      ctx.fillText(seg.text, cursorX, y);
+      cursorX += widths[i] + ctx.measureText(' ').width;
+    }
     y += lineH;
   }
 }
@@ -1379,10 +1890,11 @@ async function rasterizeRowBlob(scale) {
   ctx.scale(scale, scale);
 
   const sorted = state.boxes.slice().sort((a, b) => a.z - b.z);
+  const row = currentRowData();
   for (const b of sorted) {
     if (b.type === 'image') drawImageBox(ctx, b);
     else if (b.type === 'shape') drawShapeBox(ctx, b);
-    else drawTextBox(ctx, b, textFor(b));
+    else drawTextRuns(ctx, b, resolveRuns(b.template, row));
   }
 
   const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.92));
@@ -1398,10 +1910,6 @@ function logLine(html) {
   el.exportLog.appendChild(d);
   while (el.exportLog.children.length > 400) el.exportLog.removeChild(el.exportLog.firstChild);
   el.exportLog.scrollTop = el.exportLog.scrollHeight;
-}
-
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]));
 }
 
 function openExportModal() {
@@ -1497,8 +2005,9 @@ async function runExport() {
     if (state.cancelled) break;
 
     state.row = i;
+    const row = f.rows[i];
     for (const b of state.boxes) {
-      if (b.type === 'text') fitText(b, textFor(b));
+      if (b.type === 'text') fitTextMulti(b, resolveRuns(b.template, row));
     }
 
     let jpegBytes;
@@ -1513,18 +2022,14 @@ async function runExport() {
     pdf.addImage(jpegBytes, 'JPEG', 0, 0, pdfW, pdfH);
 
     if (bookmarkCol) {
-      const row = f.rows[i];
       const title = String(row[bookmarkCol] ?? `Page ${i + 1}`).slice(0, 120);
-      try {
-        pdf.outline.add(null, title, { pageNumber: i + 1 });
-      } catch (e) {}
+      try { pdf.outline.add(null, title, { pageNumber: i + 1 }); } catch (e) {}
     }
 
     const pct = Math.round(((i + 1) / total) * 100);
     el.barFill.style.width = pct + '%';
     el.barLabel.textContent = `${i + 1} / ${total}`;
 
-    const row = f.rows[i];
     const label = String(Object.values(row)[0] ?? `Row ${i + 1}`).slice(0, 60);
     const stamp = new Date().toLocaleTimeString('en-GB', { hour12: false });
     logLine(`<span class="dim">${stamp}</span> <span class="ok">✓</span> ${i + 1}/${total} — ${escapeHtml(label)}`);
@@ -1596,9 +2101,7 @@ function toast(msg) {
 function buildFontSelect() {
   el.fontSelect.innerHTML = '';
   const groups = {};
-  for (const f of FONT_FAMILIES) {
-    (groups[f.group] = groups[f.group] || []).push(f);
-  }
+  for (const f of FONT_FAMILIES) (groups[f.group] = groups[f.group] || []).push(f);
   for (const g of Object.keys(groups)) {
     const og = document.createElement('optgroup');
     og.label = g;
@@ -1628,7 +2131,6 @@ function buildFontSelect() {
 
 /* WIRE EVENTS */
 function wireEvents() {
-  /* Landing */
   $('#createCustom').onclick = () => {
     const w = parseFloat($('#cw').value);
     const h = parseFloat($('#ch').value);
@@ -1639,15 +2141,12 @@ function wireEvents() {
   };
 
   el.sheetModal.addEventListener('mousedown', e => {
-    if (e.target === el.sheetModal && el.sheetModalCancel.onclick) {
-      el.sheetModalCancel.onclick();
-    }
+    if (e.target === el.sheetModal && el.sheetModalCancel.onclick) el.sheetModalCancel.onclick();
   });
 
-  /* Editor top */
+  $('#backBtn').onclick = goLanding;
   $('#addTextFieldBtn').onclick = () => {
-    addFieldBox();
-    toast('Double-click to edit · click a column to insert {{column}}');
+    addFieldBox();  // enters edit mode automatically
   };
   $('#addImageBtn').onclick = () => el.imgInput.click();
 
@@ -1664,9 +2163,7 @@ function wireEvents() {
     };
   });
   document.addEventListener('click', e => {
-    if (!shapeMenu.contains(e.target) && e.target !== shapeBtn) {
-      shapeMenu.classList.remove('open');
-    }
+    if (!shapeMenu.contains(e.target) && e.target !== shapeBtn) shapeMenu.classList.remove('open');
   });
   $('#saveTplBtn').onclick   = saveTemplate;
   $('#exportBtn').onclick    = openExportModal;
@@ -1677,55 +2174,68 @@ function wireEvents() {
   if (te) te.onclick = toggleTheme;
 
   el.imgInput.onchange = async e => {
-    for (const f of Array.from(e.target.files)) {
-      addImageFromSrc(await readAsDataURL(f));
-    }
+    for (const f of Array.from(e.target.files)) addImageFromSrc(await readAsDataURL(f));
     e.target.value = '';
   };
-  $('#addFileBtn').onclick = () => el.fileInput.click();
   el.fileInput.onchange = e => { ingestFiles(e.target.files); e.target.value = ''; };
+
+  // Save the text selection BEFORE clicking any style bar control steals focus.
+  el.stylebar.addEventListener('mousedown', () => {
+    saveSelectionFromBox();
+  }, true);   // capture=true → runs before focus shifts
 
   /* Style bar */
   el.fontSelect.onchange = () => {
     const b = getSelected(); if (!b || b.type !== 'text') return;
     const [family, weight, style] = el.fontSelect.value.split('|');
-    b.family = family;
-    b.weight = parseInt(weight, 10);
-    b.italic = style === 'italic';
+    applyStyleToBox(b, { family, weight: parseInt(weight, 10), italic: style === 'italic' });
+    showStylebar(b);
+  };
+  el.fontSize.oninput = () => {
+    const b = getSelected(); if (!b || b.type !== 'text') return;
+    const v = parseFloat(el.fontSize.value);
+    b.fixedSizePt = v > 0 ? v : null;
+    updateTextDom(b);
+  };
+  el.fontSize.onblur = () => {
+    const b = getSelected(); if (!b || b.type !== 'text') return;
+    if (!el.fontSize.value) b.fixedSizePt = null;
     updateTextDom(b);
     showStylebar(b);
   };
   el.textColor.oninput = () => {
     const b = getSelected(); if (!b) return;
-    if (b.type === 'text') { b.color = el.textColor.value; updateTextDom(b); }
+    if (b.type === 'text') applyStyleToBox(b, { color: el.textColor.value });
     else if (b.type === 'shape') { b.fill = el.textColor.value; updateShapeDom(b); }
   };
   el.strokeW.oninput = () => {
     const b = getSelected(); if (!b) return;
     const v = Math.max(0, parseFloat(el.strokeW.value) || 0);
-    if (b.type === 'text') { b.strokeW = v; updateTextDom(b); }
+    if (b.type === 'text') applyStyleToBox(b, { strokeW: v });
     else if (b.type === 'shape') { b.strokeW = v; updateShapeDom(b); }
   };
   el.strokeColor.oninput = () => {
     const b = getSelected(); if (!b) return;
-    if (b.type === 'text') { b.strokeColor = el.strokeColor.value; updateTextDom(b); }
+    if (b.type === 'text') applyStyleToBox(b, { strokeColor: el.strokeColor.value });
     else if (b.type === 'shape') { b.stroke = el.strokeColor.value; updateShapeDom(b); }
   };
   el.boldBtn.onclick = () => {
     const b = getSelected(); if (!b || b.type !== 'text') return;
-    b.weight = b.weight >= 700 ? 400 : 700;
-    const fam = FONT_FAMILIES.find(f => f.family === b.family);
-    if (fam && !fam.weights.includes(b.weight)) {
-      b.weight = fam.weights.reduce((p, c) =>
-        Math.abs(c - b.weight) < Math.abs(p - b.weight) ? c : p, fam.weights[0]);
+    const cur = styleAtCurrentCaret(b);
+    const newW = cur.weight >= 700 ? 400 : 700;
+    let targetW = newW;
+    const fam = FONT_FAMILIES.find(f => f.family === cur.family);
+    if (fam && !fam.weights.includes(targetW)) {
+      targetW = fam.weights.reduce((p, c) =>
+        Math.abs(c - targetW) < Math.abs(p - targetW) ? c : p, fam.weights[0]);
     }
-    updateTextDom(b);
+    applyStyleToBox(b, { weight: targetW });
     showStylebar(b);
   };
   el.italicBtn.onclick = () => {
     const b = getSelected(); if (!b || b.type !== 'text') return;
-    b.italic = !b.italic;
-    updateTextDom(b);
+    const cur = styleAtCurrentCaret(b);
+    applyStyleToBox(b, { italic: !cur.italic });
     showStylebar(b);
   };
   const alignOrder = ['left', 'center', 'right'];
@@ -1743,8 +2253,7 @@ function wireEvents() {
   $('#zUp').onclick    = bumpZ;
   $('#zDown').onclick  = () => {
     const b = getSelected(); if (!b) return;
-    b.z = Math.max(0, b.z - 1);
-    b.el.style.zIndex = b.z;
+    b.z = Math.max(0, b.z - 1); b.el.style.zIndex = b.z;
   };
   $('#zBack').onclick  = () => {
     const b = getSelected(); if (!b) return;
@@ -1780,13 +2289,11 @@ function wireEvents() {
     if (e.target === el.scroll || e.target === $('#canvasCenter')) deselect();
   });
 
-  /* Global mousedown: exit edit if click outside the editing box
-     — but let clicks on the columns list fall through so we can
-       insert {{col}} at the caret. */
   document.addEventListener('mousedown', e => {
     const sel = getSelected();
     if (sel && sel.editing && !sel.el.contains(e.target)) {
       if (e.target.closest('.col-item, .col-list, #colHint')) return;
+      if (e.target.closest('.stylebar')) return;
       exitEditMode(sel);
     }
   });
@@ -1799,7 +2306,7 @@ function wireEvents() {
 
     if (e.key === 'Escape') {
       if (el.modal.classList.contains('open')) { if (!state.exporting) closeModal(); return; }
-      if (inEdit) { e.target.blur(); return; }
+      if (inEdit) { const sel = getSelected(); if (sel && sel.editing) exitEditMode(sel); return; }
       if (typing) { e.target.blur(); return; }
       deselect();
       return;
@@ -1818,6 +2325,16 @@ function wireEvents() {
 
     const b = getSelected();
     if (!b) return;
+
+    // Global type-to-edit: if a text box is selected but not editing, start typing
+    if (b.type === 'text' && !b.editing) {
+      const isPrintable = e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey;
+      if (isPrintable) {
+        e.preventDefault();
+        enterEditMode(b, e.key);
+        return;
+      }
+    }
 
     if (e.key === 'Delete' || e.key === 'Backspace') {
       e.preventDefault(); removeBox(b); return;
@@ -1871,7 +2388,6 @@ function wireEvents() {
   el.modalConfirm.onclick = runExport;
   el.modal.addEventListener('mousedown', e => { if (e.target === el.modal) closeModal(); });
 
-  /* Resize */
   let rt = null;
   window.addEventListener('resize', () => {
     clearTimeout(rt);
@@ -1884,6 +2400,10 @@ function wireEvents() {
 
 /* BOOT */
 function boot() {
+  const required = ['addTextFieldBtn', 'addImageBtn', 'addFileBtn', 'fileInput', 'imgInput'];
+  for (const id of required) {
+    if (!document.getElementById(id)) console.error(`[Print-Gen] Missing #${id} in HTML`);
+  }
   hydrateIcons();
   buildFontSelect();
   renderPresets();

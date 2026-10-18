@@ -1,4 +1,4 @@
-<!DOCTYPE html> <!-- v4 -->
+<!DOCTYPE html> <!-- v6 -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -126,9 +126,12 @@
       <span class="sb-text-only">
         <label>Font</label>
         <select id="fontSelect" class="sel-font"></select>
+        <label>Size</label>
+        <input type="number" id="fontSize" class="num-xs" min="1" max="800" step="0.5" placeholder="auto" title="Font size in pt — leave empty for auto-fit">
+        <span class="unit-label">pt</span>
       </span>
       <label id="lblColor">Color</label>
-      <input type="color" id="textColor" value="#111111" class="swatch">
+      <input type="color" id="textColor" value="#000000" class="swatch">
       <label id="lblStroke">Outline</label>
       <input type="number" id="strokeW" value="0" min="0" max="40" step="0.5" class="num-xs">
       <input type="color" id="strokeColor" value="#000000" class="swatch">
@@ -151,7 +154,7 @@
     <span class="divider"></span>
     <button class="icon-btn sm danger" id="deleteBtn" data-icon="trash" title="Delete (Del)"></button>
 
-    <span class="style-hint">Double-click text to edit · Ctrl+C / V to copy-paste</span>
+    <span class="style-hint">Double-click to edit · select text to style it · Ctrl+C / V to copy-paste</span>
   </div>
 
   <div class="main">
@@ -159,7 +162,7 @@
       <div class="side-block">
         <div class="side-head">
           <span>Data files</span>
-          <button class="mini-btn" id="addFileBtn" data-icon="plus" title="Load .xlsx / .csv"></button>
+          <label class="mini-btn" for="fileInput" id="addFileBtn" data-icon="plus" title="Load .xlsx / .csv"></label>
         </div>
         <div class="file-list" id="fileList">
           <div class="empty-note">Drop an .xlsx or .csv anywhere</div>
