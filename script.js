@@ -955,9 +955,12 @@ function updateSpansInPlace(b, patch) {
   const bareTexts = [];
   const walker = document.createTreeWalker(t, NodeFilter.SHOW_TEXT);
   let n;
-  while ((n = walker.nextNode())) {
-    if (n.parentNode === t && n.textContent.length) bareTexts.push(n);
-  }
+while ((n = walker.nextNode())) {
+  const parent = n.parentNode;
+  const isWrapper = parent === t ||
+    (parent.classList && parent.classList.contains('pg-obj-text-inner'));
+  if (isWrapper && n.textContent.length) bareTexts.push(n);
+}
   for (const tn of bareTexts) {
     const span = document.createElement('span');
     span.style.fontFamily = `'${DEFAULT_STYLE.family}', sans-serif`;
