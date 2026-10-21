@@ -404,6 +404,7 @@ button { font-family: inherit; }
 }
 .zoom-value:hover { background: var(--surface-3); }
 
+/* ───────────── PAGE OBJECTS ───────────── */
 .pg-obj {
   position: absolute;
   user-select: none;
@@ -413,8 +414,7 @@ button { font-family: inherit; }
 .pg-obj.selected { outline: 1.5px dashed var(--teal); }
 .pg-obj.editing  { outline: 1.5px solid var(--teal); }
 
-/* Editing mode: allow selection everywhere inside the box.
-   !important overrides the `.pg-obj, .pg-obj-text` rule at the top of the file. */
+/* Editing mode: allow selection everywhere inside the box. */
 .pg-obj.editing,
 .pg-obj.editing * {
   user-select: text !important;
@@ -422,18 +422,27 @@ button { font-family: inherit; }
   cursor: text !important;
 }
 
-.pg-obj .pg-handles { display: none; position: absolute; inset: 0; }
+/* Handles container: transparent to clicks except on the handles themselves.
+   z-index: 10 keeps handles above the box content but below the delete button. */
+.pg-obj .pg-handles {
+  display: none;
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 10;
+}
 .pg-obj.selected .pg-handles { display: block; }
 .pg-obj.selected .pg-del { display: flex; }
 .pg-obj.editing .pg-handles { display: none !important; }
 .pg-obj.editing .pg-del     { display: none !important; }
 
+/* Text content */
 .pg-obj-text {
   position: absolute;
   inset: 0;
   display: flex;
   flex-direction: column;
-  justify-content: center;   /* vertical center — always */
+  justify-content: center;
   align-items: stretch;
   padding: 0;
   overflow: hidden;
@@ -442,8 +451,8 @@ button { font-family: inherit; }
   pointer-events: none;
 }
 
-/* The single flex item that holds all inline spans.
-   Multiple styled spans stay on the same line because this wrapper is ONE flex item. */
+/* Single flex item that holds all inline spans. Prevents multi-styled
+   text from breaking onto separate lines. */
 .pg-obj-text-inner {
   display: block;
   width: 100%;
@@ -452,11 +461,8 @@ button { font-family: inherit; }
   word-break: normal;
   text-align: inherit;
 }
-
 .pg-obj-text-inner > span,
-.pg-obj-text > span {
-  white-space: pre-wrap;
-}
+.pg-obj-text > span { white-space: pre-wrap; }
 
 .pg-obj.editing .pg-obj-text {
   pointer-events: auto !important;
@@ -467,20 +473,26 @@ button { font-family: inherit; }
   user-modify: read-write;
   caret-color: auto;
 }
-
-/* Safari / Brave fix: contentEditable inside pointer-events:none needs explicit opt-in */
 .pg-obj.editing .pg-obj-text * {
   pointer-events: auto !important;
   user-select: text !important;
   -webkit-user-select: text !important;
 }
 
+.pg-obj img { width: 100%; height: 100%; display: block; pointer-events: none; }
+
+/* Resize handles — capture their own clicks */
 .pg-handle {
-  position: absolute; width: 9px; height: 9px;
-  margin: -5px 0 0 -5px; background: #fff;
-  border: 1.5px solid var(--teal); border-radius: 2px;
+  position: absolute;
+  width: 10px; height: 10px;
+  margin: -5px 0 0 -5px;
+  background: #fff;
+  border: 1.5px solid var(--teal);
+  border-radius: 2px;
   transform: scale(var(--inv-z, 1));
   transform-origin: center;
+  pointer-events: auto;
+  z-index: 1;
 }
 .h-nw { left: 0;    top: 0;    cursor: nwse-resize; }
 .h-n  { left: 50%;  top: 0;    cursor: ns-resize; }
@@ -491,9 +503,13 @@ button { font-family: inherit; }
 .h-s  { left: 50%;  top: 100%; cursor: ns-resize; }
 .h-se { left: 100%; top: 100%; cursor: nwse-resize; }
 
+/* Delete button — moved UP so it no longer covers the top-right handle */
 .pg-del {
-  position: absolute; top: -13px; right: -13px;
-  width: 22px; height: 22px; display: none;
+  position: absolute;
+  top: -28px;
+  right: -13px;
+  width: 22px; height: 22px;
+  display: none;
   align-items: center; justify-content: center;
   background: var(--danger); color: #fff;
   border: 2px solid #fff; border-radius: 50%;
@@ -502,6 +518,7 @@ button { font-family: inherit; }
 }
 .pg-del .ico { width: 11px; height: 11px; }
 
+/* ───────────── MODAL ───────────── */
 .modal-backdrop {
   position: fixed; inset: 0; z-index: 200;
   background: rgba(28,25,23,.42); backdrop-filter: blur(3px);
@@ -546,6 +563,7 @@ button { font-family: inherit; }
 .console-line .ok { color: #5eead4; }
 .console-line .dim { color: #7a7873; }
 
+/* ───────────── SCROLLBARS ───────────── */
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
@@ -557,6 +575,7 @@ button { font-family: inherit; }
   border: 3px solid transparent;
 }
 
+/* ───────────── TRANSITIONS ───────────── */
 body, .topbar, .stylebar, .sidebar, .canvas-scroll, .panel,
 .btn, .icon-btn, .mini-btn, .tgl, .field input, .field select,
 .sel-font, .num-xs, .swatch,
@@ -565,6 +584,7 @@ body, .topbar, .stylebar, .sidebar, .canvas-scroll, .panel,
   transition: background-color .18s ease, border-color .18s ease, color .18s ease, box-shadow .18s ease;
 }
 
+/* ───────────── DARK THEME ───────────── */
 [data-theme="dark"] {
   --bg:        #1a1918;
   --surface:   #262523;
@@ -613,6 +633,7 @@ body, .topbar, .stylebar, .sidebar, .canvas-scroll, .panel,
   color: var(--text-3); white-space: nowrap; padding-right: 4px;
 }
 
+/* ───────────── SHAPE MENU ───────────── */
 .menu-wrap { position: relative; }
 .menu {
   position: absolute; top: calc(100% + 6px); left: 0;
@@ -641,6 +662,7 @@ body, .topbar, .stylebar, .sidebar, .canvas-scroll, .panel,
 .sb-text-only { display: inline-flex; align-items: center; gap: 7px; }
 .sb-text-only.hidden { display: none; }
 
+/* ───────────── COLUMNS ───────────── */
 .col-hint {
   display: none; font-size: 11px; color: var(--text-3);
   margin: -4px 0 4px; line-height: 1.4;
@@ -673,6 +695,7 @@ body, .topbar, .stylebar, .sidebar, .canvas-scroll, .panel,
   color: var(--teal-700); font-weight: 500;
 }
 
+/* ───────────── SHEET CHOOSER ───────────── */
 .sheet-list {
   display: flex; flex-direction: column; gap: 4px;
   max-height: 340px; overflow-y: auto; padding-right: 4px;
