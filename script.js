@@ -620,9 +620,14 @@ function styleFromNode(node, fallback) {
   if (!isNaN(weight)) out.weight = weight;
   out.italic = cs.fontStyle === 'italic';
   if (cs.color) out.color = rgbToHex(cs.color) || out.color;
-  if (cs.webkitTextStrokeWidth && cs.webkitTextStrokeWidth !== '0px') {
-    out.strokeW = parseFloat(cs.webkitTextStrokeWidth) || 0;
-    out.strokeColor = rgbToHex(cs.webkitTextStrokeColor) || out.strokeColor;
+  // Use getPropertyValue() — camelCase access on vendor-prefixed properties
+  // is unreliable in some Chromium builds (Brave included).
+  const swRaw = cs.getPropertyValue('-webkit-text-stroke-width');
+  const scRaw = cs.getPropertyValue('-webkit-text-stroke-color');
+  const swNum = parseFloat(swRaw);
+  if (!isNaN(swNum) && swNum > 0) {
+    out.strokeW = swNum;
+    out.strokeColor = rgbToHex(scRaw) || out.strokeColor;
   }
   return out;
 }
@@ -912,16 +917,27 @@ function applyStyleToBox(b, patch) {
       if (patch.color)     span.style.color = patch.color;
       if (patch.strokeW !== undefined) {
         if (patch.strokeW > 0) {
-          span.style.webkitTextStroke = patch.strokeW + 'px ' +
-            (patch.strokeColor || '#000');
+          // Preserve the current color if the patch doesn't supply one.
+          // Reading the existing color off the span keeps red/blue/etc. intact
+          // when the user only changes the thickness.
+          let color = patch.strokeColor;
+          if (!color) {
+            const cur = cs_getStrokeColor(span);
+            color = cur || '#000000';
+          }
+          span.style.webkitTextStroke = patch.strokeW + 'px ' + color;
           span.style.paintOrder = 'stroke fill';
         } else {
           span.style.webkitTextStroke = '';
           span.style.paintOrder = '';
         }
-      }
-      if (patch.strokeColor && span.style.webkitTextStroke) {
-        span.style.webkitTextStroke = (patch.strokeW || 0) + 'px ' + patch.strokeColor;
+      } else if (patch.strokeColor) {
+        // Only color in patch: apply it if a stroke already exists
+        const curW = parseFloat(span.style.webkitTextStroke) || 0;
+        if (curW > 0) {
+          span.style.webkitTextStroke = curW + 'px ' + patch.strokeColor;
+          span.style.paintOrder = 'stroke fill';
+        }
       }
       span.appendChild(contents);
       range.insertNode(span);
@@ -945,6 +961,13 @@ function applyStyleToBox(b, patch) {
   setAllRunsStyle(b.template, patch);
   updateSpansInPlace(b, patch);
   updateTextDom(b);
+}
+
+function cs_getStrokeColor(span) {
+  try {
+    const val = window.getComputedStyle(span).getPropertyValue('-webkit-text-stroke-color');
+    return rgbToHex(val);
+  } catch (e) { return null; }
 }
 
 function updateSpansInPlace(b, patch) {
@@ -1807,9 +1830,13 @@ function drawTextRuns(ctx, b, resolvedRuns) {
     if (align === 'left')  align = 'right';
     else if (align === 'right') align = 'left';
   }
-  ctx.direction = rtl ? 'rtl' : 'ltr';
-  ctx.textAlign = align === 'left' ? 'left' : align === 'right' ? 'right' : 'center';
-  ctx.textBaseline = 'top';
+
+  // Position every word manually, so use left-align + alphabetic baseline
+  // for the primitive calls. This makes the code independent of how the
+  // canvas engine interprets 'center'/'right'/'top'.
+  ctx.direction  = rtl ? 'rtl' : 'ltr';
+  ctx.textAlign  = 'left';
+  ctx.textBaseline = 'alphabetic';
 
   const paragraphs = runsToParagraphs(resolvedRuns);
   const allLines = [];
@@ -1819,47 +1846,79 @@ function drawTextRuns(ctx, b, resolvedRuns) {
     for (const line of lines) allLines.push(line);
   }
 
-  const lineH = sizePx * LINE_H;
+  const lineH  = sizePx * LINE_H;
   const totalH = allLines.length * lineH;
-  let y = b.y + (b.h - totalH) / 2;
+  const topY   = b.y + (b.h - totalH) / 2;
 
   const leftX   = b.x;
   const rightX  = b.x + b.w;
   const centerX = b.x + b.w / 2;
 
-  for (const line of allLines) {
+  for (let li = 0; li < allLines.length; li++) {
+    const line = allLines[li];
+
+    // ---- Layout pass ----
+    // Space before each word uses THAT word's font (matches wrapStyledWords
+    // and how CSS inline layout assigns the space to the following inline).
+    const layout = [];
     let lineW = 0;
-    const widths = [];
     for (let i = 0; i < line.length; i++) {
       const seg = line[i];
       ctx.font = styleFontString(seg.style, sizePx);
-      const w = ctx.measureText(seg.text).width;
-      widths.push(w);
-      lineW += w + (i > 0 ? ctx.measureText(' ').width : 0);
+      const wordW  = ctx.measureText(seg.text).width;
+      const spaceW = i > 0 ? ctx.measureText(' ').width : 0;
+      layout.push({ seg, wordW, spaceW });
+      lineW += spaceW + wordW;
     }
 
+    // ---- Horizontal start ----
     let cursorX =
       align === 'left'  ? leftX :
       align === 'right' ? rightX - lineW :
                           centerX - lineW / 2;
 
-    for (let i = 0; i < line.length; i++) {
-      const seg = line[i];
+    // ---- Vertical baseline ----
+    // Mimic CSS: line-box height = lineH, content area = ascent + descent,
+    // half-leading centers the content vertically. Baseline is then
+    // halfLeading + ascent from the top of the line box.
+    const firstStyle = line.length ? line[0].style : DEFAULT_STYLE;
+    const fm = measureFontMetrics(ctx, firstStyle, sizePx);
+    const contentH    = fm.ascent + fm.descent;
+    const halfLeading = (lineH - contentH) / 2;
+    const baselineY   = topY + li * lineH + halfLeading + fm.ascent;
+
+    // ---- Draw pass ----
+    for (let i = 0; i < layout.length; i++) {
+      const { seg, wordW, spaceW } = layout[i];
+      cursorX += spaceW;
       const s = seg.style;
       ctx.font = styleFontString(s, sizePx);
       ctx.fillStyle = s.color;
       if (s.strokeW > 0) {
-        ctx.lineWidth = s.strokeW * 2;
-        ctx.strokeStyle = s.strokeColor;
-        ctx.lineJoin = 'round';
-        ctx.miterLimit = 2;
-        ctx.strokeText(seg.text, cursorX, y);
+        ctx.lineWidth    = s.strokeW;   // NOT *2 — match CSS stroke width
+        ctx.strokeStyle  = s.strokeColor;
+        ctx.lineJoin     = 'round';
+        ctx.miterLimit   = 2;
+        ctx.strokeText(seg.text, cursorX, baselineY);
       }
-      ctx.fillText(seg.text, cursorX, y);
-      cursorX += widths[i] + ctx.measureText(' ').width;
+      ctx.fillText(seg.text, cursorX, baselineY);
+      cursorX += wordW;
     }
-    y += lineH;
   }
+}
+
+/* Measure font ascent/descent so canvas matches CSS line-box layout.
+   fontBoundingBox* is well supported in Chromium ≥ 87, Firefox ≥ 79,
+   Safari ≥ 16.4. Fall back to a heuristic otherwise. */
+function measureFontMetrics(ctx, style, sizePx) {
+  ctx.font = styleFontString(style, sizePx);
+  const m = ctx.measureText('Mg');
+  const asc  = m.fontBoundingBoxAscent;
+  const desc = m.fontBoundingBoxDescent;
+  return {
+    ascent:  (asc  != null && asc  > 0) ? asc  : sizePx * 0.80,
+    descent: (desc != null && desc > 0) ? desc : sizePx * 0.20,
+  };
 }
 
 function drawImageBox(ctx, b) {
@@ -2217,11 +2276,22 @@ function wireEvents() {
     if (b.type === 'text') applyStyleToBox(b, { strokeW: v });
     else if (b.type === 'shape') { b.strokeW = v; updateShapeDom(b); }
   };
-  el.strokeColor.oninput = () => {
-    const b = getSelected(); if (!b) return;
-    if (b.type === 'text') applyStyleToBox(b, { strokeColor: el.strokeColor.value });
-    else if (b.type === 'shape') { b.stroke = el.strokeColor.value; updateShapeDom(b); }
-  };
+el.strokeColor.oninput = () => {
+  const b = getSelected(); if (!b) return;
+  if (b.type === 'text') {
+    // Auto-enable the outline (thickness ≥ 1) if it's currently off,
+    // otherwise the color change is invisible.
+    const cur = styleAtCurrentCaret(b);
+    const patch = { strokeColor: el.strokeColor.value };
+    if (!cur.strokeW || cur.strokeW < 1) {
+      patch.strokeW = 1;
+      el.strokeW.value = 1;
+    }
+    applyStyleToBox(b, patch);
+  }
+  else if (b.type === 'shape') { b.stroke = el.strokeColor.value; updateShapeDom(b); }
+};
+
   el.boldBtn.onclick = () => {
     const b = getSelected(); if (!b || b.type !== 'text') return;
     const cur = styleAtCurrentCaret(b);
