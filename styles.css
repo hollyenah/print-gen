@@ -449,6 +449,12 @@ button { font-family: inherit; }
   line-height: 1.15;
   outline: none;
   pointer-events: none;
+  /* = DEFAULT_STYLE in script.js. Text typed while editing inherits this and is saved as it,
+     so it must not inherit the app theme (dark mode made it off-white). */
+  color: #000;
+  font-family: 'Inter', sans-serif;
+  font-weight: 400;
+  font-style: normal;
 }
 
 /* Single flex item that holds all inline spans. Prevents multi-styled
