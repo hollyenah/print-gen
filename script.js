@@ -91,6 +91,7 @@ const WEIGHT_LABEL = {
 };
 
 const ARABIC_RE = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF\u0590-\u05FF]/;
+const LTR_WORD_RE = /^[^\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFF]*[A-Za-z\u00C0-\u024F][^\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFF]*$/; // Latin letter, no RTL chars
 const LS_TPL   = 'printgen.templates.v2';
 const LS_THEME = 'printgen.theme';
 const LINE_H   = 1.15;
@@ -310,8 +311,8 @@ function getTemplates() {
   catch { return []; }
 }
 function setTemplates(list) {
-  try { localStorage.setItem(LS_TPL, JSON.stringify(list)); }
-  catch { alert('Storage is full — remove an old template or use smaller images.'); }
+  try { localStorage.setItem(LS_TPL, JSON.stringify(list)); return true; }
+  catch { alert('Storage is full — remove an old template or use smaller images.'); return false; }
 }
 
 function renderTemplates() {
@@ -410,29 +411,26 @@ function fitZoom() {
 /* BOX MODEL */
 function newTextBox(partial) {
   return Object.assign({
-    id: 'b' + (++state.seq),
     type: 'text',
     x: 60, y: 60, w: 320, h: 100,
     z: ++state.zTop,
     template: [],          // Run[]
     align: 'left',
     fixedSizePt: null      // null/0 = auto-fit, number = fixed size in pt
-  }, partial || {});
+  }, partial || {}, { id: 'b' + (++state.seq) });
 }
 
 function newImageBox(src, partial) {
   return Object.assign({
-    id: 'b' + (++state.seq),
     type: 'image',
     x: 60, y: 60, w: 300, h: 300,
     z: ++state.zTop,
     src: src
-  }, partial || {});
+  }, partial || {}, { id: 'b' + (++state.seq) });
 }
 
 function newShapeBox(shape, partial) {
   return Object.assign({
-    id: 'b' + (++state.seq),
     type: 'shape',
     shape: shape || 'rect',
     x: 60, y: 60, w: 200, h: 130,
@@ -440,7 +438,20 @@ function newShapeBox(shape, partial) {
     fill: '#0d9488',
     stroke: '#0f766e',
     strokeW: 2
-  }, partial || {});
+  }, partial || {}, { id: 'b' + (++state.seq) });
+}
+
+/* Rebuild a box from copied/saved data (new id, image preloaded for export) */
+function boxFromData(d) {
+  const b = d.type === 'image' ? newImageBox(d.src, d)
+          : d.type === 'shape' ? newShapeBox(d.shape, d)
+          : newTextBox(d);
+  if (b.type === 'image') {
+    const img = new Image();
+    img.onload = () => { b._img = img; };
+    img.src = b.src;
+  }
+  return b;
 }
 
 function getBox(id) { return state.boxes.find(b => b.id === id); }
@@ -789,24 +800,19 @@ function updateTextDom(b) {
 
 /* SELECTION */
 function selectBox(b) {
-  const id = b ? b.id : null;
-  if (state.selectedId === id) return;
-  if (state.selectedId) {
-    const prev = getBox(state.selectedId);
-    if (prev && prev.el) prev.el.classList.remove('selected');
+  const prev = getSelected();
+  if (prev === (b || null)) return;
+  if (prev) {
+    if (prev.editing) exitEditMode(prev);   // may remove prev if it was left empty
+    if (prev.el) prev.el.classList.remove('selected');
   }
-  state.selectedId = id;
-  if (!b) { hideStylebar(); buildColumns(); return; }
-  b.el.classList.add('selected');
-  showStylebar(b);
+  state.selectedId = b ? b.id : null;
+  if (b) { b.el.classList.add('selected'); showStylebar(b); }
+  else hideStylebar();
   buildColumns();
 }
 
-function deselect() {
-  const sel = getSelected();
-  if (sel && sel.editing) exitEditMode(sel);
-  selectBox(null);
-}
+function deselect() { selectBox(null); }
 
 function showStylebar(b) {
   el.stylebar.classList.add('visible');
@@ -911,35 +917,9 @@ function applyStyleToBox(b, patch) {
     try {
       const contents = range.extractContents();
       const span = document.createElement('span');
-      if (patch.family)    span.style.fontFamily = `'${patch.family}', sans-serif`;
-      if (patch.weight)    span.style.fontWeight = String(patch.weight);
-      if (patch.italic !== undefined) span.style.fontStyle = patch.italic ? 'italic' : 'normal';
-      if (patch.color)     span.style.color = patch.color;
-      if (patch.strokeW !== undefined) {
-        if (patch.strokeW > 0) {
-          // Preserve the current color if the patch doesn't supply one.
-          // Reading the existing color off the span keeps red/blue/etc. intact
-          // when the user only changes the thickness.
-          let color = patch.strokeColor;
-          if (!color) {
-            const cur = cs_getStrokeColor(span);
-            color = cur || '#000000';
-          }
-          span.style.webkitTextStroke = patch.strokeW + 'px ' + color;
-          span.style.paintOrder = 'stroke fill';
-        } else {
-          span.style.webkitTextStroke = '';
-          span.style.paintOrder = '';
-        }
-      } else if (patch.strokeColor) {
-        // Only color in patch: apply it if a stroke already exists
-        const curW = parseFloat(span.style.webkitTextStroke) || 0;
-        if (curW > 0) {
-          span.style.webkitTextStroke = curW + 'px ' + patch.strokeColor;
-          span.style.paintOrder = 'stroke fill';
-        }
-      }
       span.appendChild(contents);
+      // Extracted inner spans keep their own inline styles, which would override the wrapper.
+      for (const s of [span, ...span.querySelectorAll('span')]) patchSpan(s, patch);
       range.insertNode(span);
 
       // Reselect inside the new span so the user still sees blue
@@ -963,11 +943,17 @@ function applyStyleToBox(b, patch) {
   updateTextDom(b);
 }
 
-function cs_getStrokeColor(span) {
-  try {
-    const val = window.getComputedStyle(span).getPropertyValue('-webkit-text-stroke-color');
-    return rgbToHex(val);
-  } catch (e) { return null; }
+/* DOM side of setAllRunsStyle. Outline patches always carry strokeW + strokeColor together. */
+function patchSpan(span, patch) {
+  if (patch.family) span.style.fontFamily = `'${patch.family}', sans-serif`;
+  if (patch.weight) span.style.fontWeight = String(patch.weight);
+  if (patch.italic !== undefined) span.style.fontStyle = patch.italic ? 'italic' : 'normal';
+  if (patch.color)  span.style.color = patch.color;
+  if (patch.strokeW !== undefined) {
+    // Explicit 0px (not '') so a span inside an outlined one doesn't inherit the outline.
+    span.style.webkitTextStroke = `${patch.strokeW}px ${patch.strokeColor}`;
+    span.style.paintOrder = 'stroke fill';
+  }
 }
 
 function updateSpansInPlace(b, patch) {
@@ -994,26 +980,7 @@ while ((n = walker.nextNode())) {
     span.appendChild(tn);
   }
 
-  const spans = t.querySelectorAll('span');
-  for (const span of spans) {
-    if (patch.family)    span.style.fontFamily = `'${patch.family}', sans-serif`;
-    if (patch.weight)    span.style.fontWeight = String(patch.weight);
-    if (patch.italic !== undefined) span.style.fontStyle = patch.italic ? 'italic' : 'normal';
-    if (patch.color)     span.style.color = patch.color;
-    if (patch.strokeW !== undefined) {
-      if (patch.strokeW > 0) {
-        span.style.webkitTextStroke = patch.strokeW + 'px ' +
-          (patch.strokeColor || '#000');
-        span.style.paintOrder = 'stroke fill';
-      } else {
-        span.style.webkitTextStroke = '';
-        span.style.paintOrder = '';
-      }
-    }
-    if (patch.strokeColor && span.style.webkitTextStroke) {
-      span.style.webkitTextStroke = (patch.strokeW || 0) + 'px ' + patch.strokeColor;
-    }
-  }
+  for (const span of t.querySelectorAll('span')) patchSpan(span, patch);
 }
 
 /* INTERACTION */
@@ -1156,6 +1123,13 @@ function enterEditMode(b, initialChar) {
   };
   t.addEventListener('keydown', onKey);
 
+  // Paste as plain text: pasted HTML would bring foreign fonts/tags the serializer can't map back.
+  const onPaste = ev => {
+    ev.preventDefault();
+    document.execCommand('insertText', false, ev.clipboardData.getData('text/plain'));
+  };
+  t.addEventListener('paste', onPaste);
+
   const onSelChange = () => {
     if (!b.editing) return;
     showStylebar(b);
@@ -1165,6 +1139,7 @@ function enterEditMode(b, initialChar) {
   b._editCleanup = () => {
     t.removeEventListener('input', onInput);
     t.removeEventListener('keydown', onKey);
+    t.removeEventListener('paste', onPaste);
     document.removeEventListener('selectionchange', onSelChange);
   };
 
@@ -1257,15 +1232,9 @@ function copySelected() {
 }
 function pasteClipboard() {
   if (!state.clipboard) return;
-  const data = Object.assign({}, state.clipboard);
-  const b = data.type === 'image' ? newImageBox(data.src, data) : newTextBox(data);
+  const b = boxFromData(cloneBoxData(state.clipboard));
   b.x += 24; b.y += 24;
   b.z = ++state.zTop;
-  if (b.type === 'image') {
-    const img = new Image();
-    img.onload = () => { b._img = img; };
-    img.src = b.src;
-  }
   state.boxes.push(b);
   renderBox(b);
   selectBox(b);
@@ -1280,15 +1249,9 @@ function cutSelected() {
 function duplicateSelected() {
   const b = getSelected();
   if (!b) return;
-  const data = cloneBoxData(b);
-  const copy = data.type === 'image' ? newImageBox(data.src, data) : newTextBox(data);
+  const copy = boxFromData(cloneBoxData(b));
   copy.x = b.x + 20; copy.y = b.y + 20;
   copy.z = ++state.zTop;
-  if (copy.type === 'image') {
-    const img = new Image();
-    img.onload = () => { copy._img = img; };
-    img.src = copy.src;
-  }
   state.boxes.push(copy);
   renderBox(copy);
   selectBox(copy);
@@ -1355,6 +1318,8 @@ function addShapeBox(shape) {
 }
 
 function removeBox(b) {
+  if (b._editCleanup) { b._editCleanup(); b._editCleanup = null; }
+  b.editing = false;
   if (b.el) b.el.remove();
   const i = state.boxes.indexOf(b);
   if (i > -1) state.boxes.splice(i, 1);
@@ -1368,9 +1333,22 @@ function readWorkbook(file) {
     r.onerror = () => reject(r.error);
     r.onload = e => {
       try {
-        const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+        const bytes = new Uint8Array(e.target.result);
+        const isCsv = /\.csv$/i.test(file.name);
+        // SheetJS reads BOM-less CSV bytes as Latin-1 (Arabic/accents garble), so decode UTF-8 here.
+        // raw: CSV cells stay as typed ("0612…" keeps its 0, "01/02/2026" isn't turned into a number).
+        const text = isCsv ? decodeUtf8(bytes) : null;
+        const wb = text !== null
+          ? XLSX.read(text, { type: 'string', raw: true })
+          : XLSX.read(bytes, { type: 'array', raw: isCsv, cellNF: true });
         const sheets = wb.SheetNames.map(name => {
-          const rows = XLSX.utils.sheet_to_json(wb.Sheets[name], { defval: '' });
+          const ws = wb.Sheets[name];
+          // Dates, %, currency: use the text Excel displays. "General" numbers stay raw (else 2.1E+11).
+          for (const k in ws) {
+            const c = ws[k];
+            if (k[0] !== '!' && c.t === 'n' && c.w && c.z && c.z !== 'General') { c.t = 's'; c.v = c.w; }
+          }
+          const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
           return { name, rows, columns: rows.length ? Object.keys(rows[0]) : [] };
         });
         resolve({ fileName: file.name, sheets });
@@ -1378,6 +1356,11 @@ function readWorkbook(file) {
     };
     r.readAsArrayBuffer(file);
   });
+}
+
+function decodeUtf8(bytes) {
+  try { return new TextDecoder('utf-8', { fatal: true }).decode(bytes); }
+  catch { return null; }   // not UTF-8 (e.g. Windows-1252 export): let SheetJS decode it
 }
 
 function readAsDataURL(file) {
@@ -1556,7 +1539,10 @@ function removeFile(i) {
     refreshAllText();
     return;
   }
-  switchFile(Math.min(i, state.files.length - 1));
+  // Removing another file must not change which one is active
+  if (i === state.activeFile) return switchFile(Math.min(i, state.files.length - 1));
+  if (i < state.activeFile) state.activeFile--;
+  buildFileList();
 }
 
 function buildColumns() {
@@ -1711,7 +1697,7 @@ function saveTemplate() {
   };
   const list = getTemplates();
   list.unshift(tpl);
-  setTemplates(list);
+  if (!setTemplates(list)) return;
   renderTemplates();
   toast('Template saved');
 }
@@ -1722,17 +1708,8 @@ function loadTemplate(t) {
   requestAnimationFrame(() => {
     for (const bd of t.boxes) {
       if (bd.type === 'text') migrateBoxTemplate(bd);
-
-      const b = bd.type === 'image' ? newImageBox(bd.src, bd)
-              : bd.type === 'shape' ? newShapeBox(bd.shape, bd)
-              : newTextBox(bd);
-      b.z = bd.z;
+      const b = boxFromData(bd);
       state.zTop = Math.max(state.zTop, bd.z);
-      if (b.type === 'image') {
-        const img = new Image();
-        img.onload = () => { b._img = img; };
-        img.src = b.src;
-      }
       state.boxes.push(b);
       renderBox(b);
     }
@@ -1887,10 +1864,35 @@ function drawTextRuns(ctx, b, resolvedRuns) {
     const halfLeading = (lineH - contentH) / 2;
     const baselineY   = topY + li * lineH + halfLeading + fm.ascent;
 
+    // ---- Word positions ----
+    // Each fillText only shapes one word, so RTL word order must be placed by hand:
+    // right-to-left, except runs of Latin words which keep their own order (like CSS bidi).
+    // shortcut: word-level bidi only (no full UBA for numbers/punctuation next to Latin words).
+    if (rtl) {
+      let x = cursorX + lineW;
+      for (let i = 0; i < layout.length; ) {
+        let j = i + 1;
+        if (LTR_WORD_RE.test(layout[i].seg.text)) {
+          while (j < layout.length && LTR_WORD_RE.test(layout[j].seg.text)) j++;
+        }
+        let runW = layout[i].wordW;
+        for (let k = i + 1; k < j; k++) runW += layout[k].spaceW + layout[k].wordW;
+        x -= layout[i].spaceW + runW;
+        let gx = x;
+        for (let k = i; k < j; k++) {
+          if (k > i) gx += layout[k].spaceW;
+          layout[k].x = gx;
+          gx += layout[k].wordW;
+        }
+        i = j;
+      }
+    } else {
+      for (const l of layout) { cursorX += l.spaceW; l.x = cursorX; cursorX += l.wordW; }
+    }
+
     // ---- Draw pass ----
     for (let i = 0; i < layout.length; i++) {
-      const { seg, wordW, spaceW } = layout[i];
-      cursorX += spaceW;
+      const { seg, x: cursorX } = layout[i];
       const s = seg.style;
       ctx.font = styleFontString(s, sizePx);
       ctx.fillStyle = s.color;
@@ -1902,7 +1904,6 @@ function drawTextRuns(ctx, b, resolvedRuns) {
         ctx.strokeText(seg.text, cursorX, baselineY);
       }
       ctx.fillText(seg.text, cursorX, baselineY);
-      cursorX += wordW;
     }
   }
 }
@@ -1942,14 +1943,11 @@ async function preloadAllImages() {
   return Promise.all(promises);
 }
 
-async function rasterizeRowBlob(scale) {
-  const canvas = document.createElement('canvas');
-  canvas.width  = Math.max(1, Math.round(state.doc.w * scale));
-  canvas.height = Math.max(1, Math.round(state.doc.h * scale));
+async function rasterizeRowBlob(canvas, scale) {
   const ctx = canvas.getContext('2d');
+  ctx.setTransform(scale, 0, 0, scale, 0, 0);
   ctx.fillStyle = '#ffffff';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  ctx.scale(scale, scale);
+  ctx.fillRect(0, 0, state.doc.w, state.doc.h);
 
   const sorted = state.boxes.slice().sort((a, b) => a.z - b.z);
   const row = currentRowData();
@@ -1985,8 +1983,7 @@ function openExportModal() {
   el.modalTitle.textContent = 'Export PDF';
   el.modalSetup.classList.remove('hidden');
   el.modalProgress.classList.add('hidden');
-  el.modalConfirm.classList.remove('hidden');
-  el.modalCancel.textContent = 'Cancel';
+  resetModalConfirm();   // closing with ✕/Esc after an export left the button as "Close"
   el.pdfName.value = f.name.replace(/\.[^.]+$/, '') || 'printgen-export';
 
   el.pdfBookmarkCol.innerHTML = '<option value="">None</option>';
@@ -2052,8 +2049,25 @@ async function runExport() {
   logLine(`<span class="dim">›</span> Page <span class="ok">${state.doc.w}×${state.doc.h}px</span>`);
   logLine(`<span class="dim">›</span> ${total} records · raster ×${scale.toFixed(2)}${total > 1500 ? ' (auto-reduced)' : ''}`);
 
-  await document.fonts.ready;
+  // Google Fonts load per unicode-range on first use, and canvas won't wait: load every subset
+  // the rows need (e.g. Arabic rows while the preview shows a Latin one) before drawing.
+  const chars = new Set();
+  for (const r of f.rows) for (const v of Object.values(r)) for (const ch of String(v)) chars.add(ch);
+  const fonts = new Set();
+  for (const b of state.boxes) {
+    if (b.type !== 'text') continue;
+    for (const r of b.template) { fonts.add(styleFontString(r.style, 16)); for (const ch of r.text) chars.add(ch); }
+  }
+  const sample = [...chars].join('');
+  await Promise.all([...fonts].map(fs => document.fonts.load(fs, sample).catch(() => {})));
+  _fitCache.clear();
   await preloadAllImages();
+
+  // One canvas reused for every page instead of allocating a new (up to ~30 MB) one per row
+  const canvas = document.createElement('canvas');
+  canvas.width  = Math.max(1, Math.round(state.doc.w * scale));
+  canvas.height = Math.max(1, Math.round(state.doc.h * scale));
+  let pages = 0;
 
   const bookmarkCol = el.pdfBookmarkCol.value || null;
   if (bookmarkCol) {
@@ -2068,24 +2082,22 @@ async function runExport() {
 
     state.row = i;
     const row = f.rows[i];
-    for (const b of state.boxes) {
-      if (b.type === 'text') fitTextMulti(b, resolveRuns(b.template, row));
-    }
 
     let jpegBytes;
     try {
-      jpegBytes = await rasterizeRowBlob(scale);
+      jpegBytes = await rasterizeRowBlob(canvas, scale);
     } catch (err) {
-      logLine(`<span class="dim">✕ row ${i + 1} failed — ${err.message}</span>`);
+      logLine(`<span class="dim">✕ row ${i + 1} failed — ${escapeHtml(err.message)}</span>`);
       continue;
     }
 
-    if (i > 0) pdf.addPage();
-    pdf.addImage(jpegBytes, 'JPEG', 0, 0, pdfW, pdfH);
+    if (pages++) pdf.addPage();
+    // Unique alias: jsPDF otherwise dedupes by a 32-bit hash of half the bytes (cost + collision risk)
+    pdf.addImage(jpegBytes, 'JPEG', 0, 0, pdfW, pdfH, 'p' + i);
 
     if (bookmarkCol) {
-      const title = String(row[bookmarkCol] ?? `Page ${i + 1}`).slice(0, 120);
-      try { pdf.outline.add(null, title, { pageNumber: i + 1 }); } catch (e) {}
+      const title = (String(row[bookmarkCol] ?? '').trim() || `Page ${i + 1}`).slice(0, 120);
+      try { pdf.outline.add(null, title, { pageNumber: pages }); } catch (e) {}
     }
 
     const pct = Math.round(((i + 1) / total) * 100);
@@ -2125,7 +2137,7 @@ async function runExport() {
   await new Promise(r => setTimeout(r, 80));
   pdf.save(name + '.pdf');
 
-  el.barLabel.textContent = `Saved ${total} pages · ${name}.pdf`;
+  el.barLabel.textContent = `Saved ${pages} pages · ${name}.pdf`;
   el.modalCancel.textContent = 'Close';
   el.modalConfirm.classList.remove('hidden');
   el.modalConfirm.querySelector('span').textContent = 'Close';
@@ -2273,24 +2285,19 @@ function wireEvents() {
   el.strokeW.oninput = () => {
     const b = getSelected(); if (!b) return;
     const v = Math.max(0, parseFloat(el.strokeW.value) || 0);
-    if (b.type === 'text') applyStyleToBox(b, { strokeW: v });
+    if (b.type === 'text') applyStyleToBox(b, { strokeW: v, strokeColor: el.strokeColor.value });
     else if (b.type === 'shape') { b.strokeW = v; updateShapeDom(b); }
   };
-el.strokeColor.oninput = () => {
-  const b = getSelected(); if (!b) return;
-  if (b.type === 'text') {
-    // Auto-enable the outline (thickness ≥ 1) if it's currently off,
-    // otherwise the color change is invisible.
-    const cur = styleAtCurrentCaret(b);
-    const patch = { strokeColor: el.strokeColor.value };
-    if (!cur.strokeW || cur.strokeW < 1) {
-      patch.strokeW = 1;
-      el.strokeW.value = 1;
+  el.strokeColor.oninput = () => {
+    const b = getSelected(); if (!b) return;
+    if (b.type === 'text') {
+      // Turn the outline on (≥ 1) if it's off, otherwise the color change is invisible.
+      const w = Math.max(1, parseFloat(el.strokeW.value) || 0);
+      el.strokeW.value = w;
+      applyStyleToBox(b, { strokeW: w, strokeColor: el.strokeColor.value });
     }
-    applyStyleToBox(b, patch);
-  }
-  else if (b.type === 'shape') { b.stroke = el.strokeColor.value; updateShapeDom(b); }
-};
+    else if (b.type === 'shape') { b.stroke = el.strokeColor.value; updateShapeDom(b); }
+  };
 
   el.boldBtn.onclick = () => {
     const b = getSelected(); if (!b || b.type !== 'text') return;
@@ -2321,17 +2328,22 @@ el.strokeColor.oninput = () => {
   };
 
   /* z-order */
-  const bumpZ = () => { const b = getSelected(); if (b) { b.z = ++state.zTop; b.el.style.zIndex = b.z; } };
-  $('#zFront').onclick = bumpZ;
-  $('#zUp').onclick    = bumpZ;
-  $('#zDown').onclick  = () => {
+  // Move the selected box in the stacking order, then renumber z as 1..n (no ties, no gaps).
+  const restack = to => {
     const b = getSelected(); if (!b) return;
-    b.z = Math.max(0, b.z - 1); b.el.style.zIndex = b.z;
+    const order = state.boxes.slice().sort((p, q) => p.z - q.z);
+    const i = order.indexOf(b);
+    order.splice(i, 1);
+    const j = to === 'front' ? order.length : to === 'back' ? 0
+            : Math.max(0, Math.min(order.length, i + to));
+    order.splice(j, 0, b);
+    order.forEach((x, k) => { x.z = k + 1; x.el.style.zIndex = x.z; });
+    state.zTop = order.length;
   };
-  $('#zBack').onclick  = () => {
-    const b = getSelected(); if (!b) return;
-    b.z = 0; b.el.style.zIndex = 0;
-  };
+  $('#zFront').onclick = () => restack('front');
+  $('#zUp').onclick    = () => restack(1);
+  $('#zDown').onclick  = () => restack(-1);
+  $('#zBack').onclick  = () => restack('back');
   $('#deleteBtn').onclick = () => { const b = getSelected(); if (b) removeBox(b); };
 
   /* Rows nav */
@@ -2352,11 +2364,7 @@ el.strokeColor.oninput = () => {
 
   /* Click empty page = deselect + exit edit */
   el.page.addEventListener('mousedown', e => {
-    if (e.target === el.page) {
-      const sel = getSelected();
-      if (sel && sel.editing) exitEditMode(sel);
-      deselect();
-    }
+    if (e.target === el.page) deselect();
   });
   el.scroll.addEventListener('mousedown', e => {
     if (e.target === el.scroll || e.target === $('#canvasCenter')) deselect();
@@ -2379,11 +2387,15 @@ el.strokeColor.oninput = () => {
 
     if (e.key === 'Escape') {
       if (el.modal.classList.contains('open')) { if (!state.exporting) closeModal(); return; }
+      if (el.sheetModal.classList.contains('open')) { el.sheetModalCancel.onclick(); return; }
       if (inEdit) { const sel = getSelected(); if (sel && sel.editing) exitEditMode(sel); return; }
       if (typing) { e.target.blur(); return; }
       deselect();
       return;
     }
+
+    // No editor shortcuts on the landing screen or behind an open dialog (Backspace would delete a box).
+    if (!el.editor.classList.contains('active') || document.querySelector('.modal-backdrop.open')) return;
 
     const mod = e.ctrlKey || e.metaKey;
     if (mod && !typing && !inEdit) {
@@ -2460,6 +2472,9 @@ el.strokeColor.oninput = () => {
   };
   el.modalConfirm.onclick = runExport;
   el.modal.addEventListener('mousedown', e => { if (e.target === el.modal) closeModal(); });
+
+  // Auto-fit sizes measured with a fallback font (before the web font arrived) were cached; redo them.
+  document.fonts.addEventListener('loadingdone', () => { _fitCache.clear(); refreshAllText(); });
 
   let rt = null;
   window.addEventListener('resize', () => {
