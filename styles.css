@@ -322,6 +322,7 @@ button { font-family: inherit; }
 }
 .counter { font-variant-numeric: tabular-nums; letter-spacing: 0; }
 
+.add-data { width: 100%; justify-content: center; flex: 0 0 auto; }
 .file-list { display: flex; flex-direction: column; gap: 4px; overflow-y: auto; max-height: 190px; }
 .file-item {
   flex-shrink: 0; display: flex; align-items: center; gap: 8px;
